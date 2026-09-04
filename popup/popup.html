@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StudOn to NotebookLM</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-badge">⚡</div>
+        <div class="logo-text">
+          <h1>StudOn ➔ NotebookLM</h1>
+          <span class="subtext">Course Material Exporter</span>
+        </div>
+      </div>
+      <div class="status-indicator">
+        <span class="dot active"></span>
+        <span class="status-label">Online</span>
+      </div>
+    </header>
+
+    <!-- Plugin Goal -->
+    <section class="card goal-card" style="background: rgba(94, 106, 210, 0.08); border-color: rgba(94, 106, 210, 0.25);">
+      <div class="card-label" style="color: #818cf8;">🎯 PLUGIN GOAL</div>
+      <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+        Bridge FAU StudOn courses with <b>Google NotebookLM</b>. Automatically aggregates dispersed lecture slides, exercises, learning module chapters, and summaries into clean AI-ready study materials.
+      </div>
+    </section>
+
+    <section class="card course-card">
+      <div class="card-label">CURRENT COURSE</div>
+      <div class="course-title" id="course-name">Detecting course...</div>
+      <div class="course-url" id="course-url">https://www.studon.fau.de/...</div>
+    </section>
+
+    <section class="card options-card">
+      <div class="card-label">EXPORT SETTINGS</div>
+      <div class="option-row">
+        <span>Lecture Slides & Handouts</span>
+        <label class="switch">
+          <input type="checkbox" id="opt-lectures" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="option-row">
+        <span>Exercises & Reading Materials</span>
+        <label class="switch">
+          <input type="checkbox" id="opt-exercises" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="option-row">
+        <span>Discussion Sessions & Guest Talks</span>
+        <label class="switch">
+          <input type="checkbox" id="opt-sessions" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="option-row">
+        <span>Scraped Notes, FAQs & Glossary</span>
+        <label class="switch">
+          <input type="checkbox" id="opt-notes" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card progress-card" id="progress-area" style="display:none;">
+      <div class="progress-header">
+        <span id="progress-msg">Preparing...</span>
+        <span id="progress-num">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-bar"></div>
+      </div>
+      <div class="console-box" id="console-box"></div>
+    </section>
+
+    <footer class="footer-actions">
+      <button class="btn btn-primary" id="btn-export-zip">
+        <span>📦</span> Export Structured ZIP
+      </button>
+      <button class="btn btn-secondary" id="btn-open-nlm">
+        <span>🪐</span> Open NotebookLM
+      </button>
+    </footer>
+  </div>
+
+  <script src="../lib/jszip.min.js"></script>
+  <script src="../lib/crawler.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
