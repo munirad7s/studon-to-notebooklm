@@ -183,12 +183,18 @@
         [0, 'Intro'], [4, 'Das Problem'], [12, 'Ein Klick'], [20, 'Dialog'],
         [30, 'Export'], [44, 'NotebookLM'], [55, 'Funktionen'], [65, 'Installation'],
       ];
+      // Vor geladenen Metadaten ignoriert der Browser currentTime - dann erst nach loadedmetadata springen.
+      const seekTo = (t) => {
+        const go = () => { hero.currentTime = t; hero.play().catch(() => {}); };
+        if (hero.readyState >= 1) go();
+        else hero.addEventListener('loadedmetadata', go, { once: true });
+      };
       const buttons = chapters.map(([t, label]) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'chapter';
         b.textContent = label;
-        b.addEventListener('click', () => { hero.currentTime = t; hero.play().catch(() => {}); });
+        b.addEventListener('click', () => seekTo(t));
         chaptersEl.appendChild(b);
         return b;
       });
