@@ -1,42 +1,84 @@
-# StudOn to NotebookLM (Chrome Extension)
+# StudOn → NotebookLM (Chrome-Extension)
 
-A high-performance, Linear-styled browser extension for **FAU StudOn** that exports entire course materials (slides, handouts, exercises, learning modules, and generated markdown summaries) into **Google NotebookLM** or a structured ZIP archive with 1 click.
+Exportiert einen kompletten **FAU-StudOn-Kurs** mit einem Klick nach **Google NotebookLM** – rekursiv über alle Ordner,
+Sitzungen, Übungen, Lernmodule, Inhaltsseiten, Wikis, Glossare und Weblinks. Optional wird alles zusätzlich nach
+**Google Drive** gespiegelt (und dort als syncbare NotebookLM-Quellen verknüpft) oder als **ZIP** gespeichert.
 
----
+Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session. Kein Python, kein Server, keine API-Keys.
 
-## ✨ Features
+## Was passiert beim Export
 
-- **100% Client-Side**: No local Python, terminal, or backend servers needed. Runs entirely inside Chrome with your existing StudOn session.
-- **Deep Crawler**:
-  - Recursively resolves all folders and subfolders.
-  - Automatically parses ILIAS **Learning Modules (`lm`)**, extracting attached slides, handouts, and chapter text.
-  - Auto-generates clean Markdown notes (`Notes.md`, `Course_Overview.md`, `FAQ.md`, `Glossary.md`).
-  - Discovers discussion session PDFs, exercises, and guest lecture materials.
-- **Linear Design System**: Clean dark-mode UI with live progress indicators and detailed logs.
-- **Two Export Modes**:
-  1. **Structured ZIP Archive**: Packages all folders and files directly in memory using `JSZip` and downloads as a ready-to-upload archive.
-  2. **NotebookLM Ready**: Open NotebookLM directly to import your files or connect to Google Drive.
+1. **Scan** – Die Extension liest die Kursseite und folgt jedem Objekt:
+   - Ordner / Gruppen / Sitzungen → rekursiv
+   - Dateien → Download-Link (`goto.php?target=file_<ref>_download`)
+   - Lernmodule → alle Seiten als ein Markdown-Text + angehängte Dateien + eingebettete YouTube-Videos
+   - Übungen → Aufgabentext + Aufgabendateien
+   - Inhaltsseiten, Wikis, Glossare, Foren (optional), Mediacasts (optional)
+   - Weblinks / YouTube → als URL-Quellen
+   - Tests, Umfragen, Datensammlungen etc. werden gelistet, aber übersprungen
+2. **Auswahl** – Baum mit Checkboxen: alles ist vorausgewählt, „Nur Neues“ wählt nur, was noch nicht im Notebook ist.
+3. **Export** – Neues Notebook, vorhandenes Notebook oder das zuletzt für diesen Kurs verwendete:
+   - Dateien werden mit deiner StudOn-Session geladen und per Resumable-Upload direkt in NotebookLM hochgeladen
+   - Code/Text-Dateien (`.py`, `.java`, `.tex`, …) werden als `.txt` hochgeladen, ZIP-Archive entpackt
+   - Texte (Lernmodule, Seiten, Wiki) werden als Textquellen angelegt, Links als URL-Quellen
+   - eine Quelle „Kursstruktur“ beschreibt den kompletten Baum
+   - ist ein Notebook voll (50 Quellen Free / 300 Pro), geht es automatisch in „Kurs (2)“ weiter
+4. **Sync** – Die Extension merkt sich pro Kurs, was schon in welchem Notebook liegt. Der nächste Lauf lädt nur Neues nach.
 
----
+## Installation
 
-## 🚀 How to Install in Chrome
+1. Repo klonen oder als ZIP laden.
+2. `chrome://extensions` → **Entwicklermodus** an → **Entpackte Erweiterung laden** → diesen Ordner wählen.
+3. In diesem Chrome-Profil bei [notebooklm.google.com](https://notebooklm.google.com) **und** bei [StudOn](https://www.studon.fau.de) angemeldet sein.
+4. Kurs öffnen → unten rechts **⚡ NotebookLM** → „Export öffnen“ → **Scan starten** → **Export starten**.
 
-1. Open **Google Chrome**.
-2. Navigate to `chrome://extensions/` in your address bar.
-3. Toggle on **"Developer mode"** in the top-right corner.
-4. Click **"Load unpacked"** in the top-left corner.
-5. Select the extension directory:
-   ```
-   /Users/munir/studon-to-notebooklm
-   ```
-6. The **StudOn to NotebookLM** icon will appear in your Chrome toolbar.
+Die Extension-ID ist über den `key` im Manifest fest: `hceibhcelpeeniihfdlbfopkmnakhemd`.
 
----
+## Google Drive (optional)
 
-## 📖 How to Use
+Drive braucht eine OAuth-Client-ID (kein Weg ohne). Einmalig:
 
-1. Open any course page on [FAU StudOn](https://www.studon.fau.de).
-2. Look for the floating **"⚡ Export to NotebookLM"** badge in the bottom-right corner, or click the extension icon in the toolbar.
-3. Configure which materials to include (Lectures, Exercises, Notes).
-4. Click **"Export Structured ZIP"**.
-5. Upload or drag & drop the files into your [Google NotebookLM](https://notebooklm.google.com) notebook!
+1. [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) → „OAuth client ID“ → Typ **Web application**.
+2. Authorized redirect URI: `https://hceibhcelpeeniihfdlbfopkmnakhemd.chromiumapp.org/`
+3. **Google Drive API** aktivieren, im Consent-Screen (Testing) deinen Account als Test-User eintragen.
+4. Client-ID in den Extension-Optionen eintragen → „Drive verbinden / testen“.
+
+Dann im Exporter: „Nach Google Drive spiegeln“ (Kopie in `Meine Ablage/NotebookLM Import/<Kurs>/…`) und/oder
+„Drive-Dateien als Quellen verknüpfen“ (pptx/docx/xlsx → Slides/Docs/Sheets, in NotebookLM syncbar).
+
+## Grenzen (NotebookLM)
+
+| Limit | Wert |
+|---|---|
+| Quellen pro Notebook | 50 (Free) · 300 (Pro/Ultra) – Overflow-Notebooks werden automatisch angelegt |
+| Dateigröße | 200 MB |
+| Wörter pro Quelle | ~500 k – längere Texte werden geteilt |
+| Formate direkt | pdf, txt, md, docx, pptx, csv, epub, Bilder, Audio, Video |
+| Formate nur via Drive | xlsx, ods, odt, odp |
+
+## Entwicklung
+
+```bash
+npm install          # nur linkedom für DOM-Tests
+npm test             # node --test (Crawler, NotebookLM-Client, Exporter, Helfer)
+npm run package      # dist/studon-to-notebooklm-<version>.zip
+```
+
+- `lib/ilias.js` – StudOn-URLs, Objekttypen, Namen
+- `lib/text.js` – HTML → Markdown
+- `lib/crawler.js` – rekursiver Kurs-Scan (Baum)
+- `lib/nlm-client.js` – NotebookLM-RPCs + Resumable-Upload
+- `lib/drive-client.js` – Drive v3 (OAuth via `chrome.identity`)
+- `lib/exporter.js` – Plan + Ausführung, inkrementeller Zustand, Overflow, ZIP
+- `export/` – der Exporter-Tab (Engine + UI), `content/` – Badge auf StudOn, `popup/`, `options/`
+
+Protokoll- und Struktur-Details: [`docs/FINDINGS.md`](docs/FINDINGS.md), Architektur: [`docs/architecture.md`](docs/architecture.md).
+
+## Fehlerbilder
+
+| Meldung | Ursache / Lösung |
+|---|---|
+| „Nicht bei NotebookLM angemeldet“ | In diesem Chrome-Profil notebooklm.google.com öffnen, anmelden, Exporter neu laden |
+| „StudOn-Session abgelaufen“ | In StudOn neu einloggen, Scan wiederholen |
+| „RPC … fehlt in der Antwort“ | Google hat eine RPC-ID rotiert – IDs in `lib/nlm-client.js` (`RPC`) anpassen, siehe `docs/FINDINGS.md` |
+| Datei „liefert keine Datei“ | Kein Leserecht oder Objekt ist keine Datei – wird übersprungen und im Ergebnis gelistet |
