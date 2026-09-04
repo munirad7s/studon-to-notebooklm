@@ -14,7 +14,7 @@ async function init() {
     $('cur-meta').textContent = `${typeLabel(parsed.type || 'crs')} · ref ${parsed.refId}${state.lastRun ? ` · zuletzt ${new Date(state.lastRun).toLocaleDateString('de-DE')}` : ''}`;
     $('btn-open').disabled = false;
     $('btn-open').addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'open-exporter', ref: parsed.refId, type: parsed.type || '', title, url }, () => window.close());
+      chrome.runtime.sendMessage({ type: 'open-exporter', ref: parsed.refId, objType: parsed.type || '', title, url }, () => window.close());
     });
   } else if (url.includes('studon.fau.de')) {
     $('cur-title').textContent = 'StudOn – kein Kursobjekt erkannt';

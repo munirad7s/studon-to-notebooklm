@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Modal-Harness</title>
+  <style>
+    /* Grobe Nachbildung einer StudOn-Kursseite, damit der Dialog vor echtem Hintergrund steht. */
+    body { margin: 0; font-family: "Open Sans", Arial, sans-serif; background: #f4f4f4; color: #161616; }
+    .il-mainbar { background: #fff; border-bottom: 1px solid #ddd; padding: 12px 24px; font-size: 13px; }
+    .il-page-content-header { max-width: 960px; margin: 24px auto 8px; display: flex; align-items: center; gap: 12px; }
+    .il-page-content-header h1 { font-size: 22px; font-weight: 400; margin: 0; }
+    .content { max-width: 960px; margin: 0 auto; padding: 0 0 80px; }
+    .il-std-item { background: #fff; border: 1px solid #e0e0e0; padding: 12px 16px; margin-bottom: 8px; }
+    .il-std-item a { color: #0d5b96; text-decoration: none; }
+    .ilTabs { max-width: 960px; margin: 0 auto 12px; display: flex; gap: 18px; font-size: 13px; }
+    .ilTabs a { color: #444; }
+    #harness-log { position: fixed; left: 16px; bottom: 16px; font: 11px/1.5 monospace; color: #666; max-width: 50vw; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="il-mainbar">StudOn · Magazin › Human Computer Interaction (SS 2026)</div>
+  <div class="il-page-content-header">
+    <img class="icon" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Kurs" data-src="icon_crs.svg" width="32" height="32">
+    <h1>Human Computer Interaction (SS 2026)</h1>
+  </div>
+  <div class="ilTabs">
+    <a href="ilias.php?baseClass=ilrepositorygui&ref_id=234016">Inhalt</a>
+    <a href="ilias.php?baseClass=ilrepositorygui&cmd=infoScreen&ref_id=234016">Info</a>
+    <a href="ilias.php?baseClass=ilrepositorygui&cmd=members&ref_id=234016">Mitglieder</a>
+  </div>
+  <div class="content">
+    <div class="il-std-item"><a href="#">Vorlesungsfolien</a></div>
+    <div class="il-std-item"><a href="#">Übungsblätter</a></div>
+    <div class="il-std-item"><a href="#">Lernmodul: Introduction to HCI</a></div>
+    <div class="il-std-item"><a href="#">Sitzung 1 – Kickoff</a></div>
+  </div>
+  <pre id="harness-log"></pre>
+
+  <script>
+    // chrome-Stub: Einstellungen, ein bereits exportierter Kurs (per ?known=1) und Notebook-Liste.
+    const known = new URLSearchParams(location.search).get('known') === '1';
+    const loggedOut = new URLSearchParams(location.search).get('loggedout') === '1';
+    const log = (m) => { document.getElementById('harness-log').textContent += `${m}\n`; };
+
+    const store = {
+      settings: { scan: { files: true, learningModules: true, exercises: true, sessions: true, pages: true, wiki: true, glossary: true, courseInfo: true, weblinks: true, forum: false, media: false } },
+    };
+    if (known) {
+      store['course:234016'] = {
+        primaryNotebookId: 'nb-2',
+        notebooks: [{ id: 'nb-2', title: 'HCI SS26' }],
+        items: Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`file:${i}`, {}])),
+        lastRun: Date.now() - 86400000,
+      };
+    }
+
+    globalThis.chrome = {
+      runtime: {
+        getURL: (p) => `../${p}`,
+        lastError: null,
+        sendMessage: (msg, cb) => {
+          log(`→ ${JSON.stringify(msg)}`);
+          setTimeout(() => {
+            if (msg.type === 'list-notebooks') {
+              if (loggedOut) return cb({ ok: false, notLoggedIn: true, error: 'nicht angemeldet' });
+              return cb({ ok: true, email: 'munir@fau.de', notebooks: [
+                { id: 'nb-1', title: 'Statistik I', emoji: '📊', sourceCount: 12 },
+                { id: 'nb-2', title: 'HCI SS26', emoji: '🧠', sourceCount: 23 },
+                { id: 'nb-3', title: 'Seminar KIDAS', emoji: '', sourceCount: 4 },
+              ] });
+            }
+            cb({ ok: true, tabId: 1 });
+          }, 600);
+        },
+      },
+      storage: { local: { get: (keys, cb) => cb(Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in store).map((k) => [k, store[k]]))) } },
+    };
+    // Das Icon-src wird im Content-Script per Regex gelesen; die Harness haelt den Namen im data-Attribut.
+    document.querySelector('.il-page-content-header img').setAttribute('src', 'templates/default/images/standard/icon_crs.svg');
+  </script>
+  <script src="../content/content.js"></script>
+</body>
+</html>

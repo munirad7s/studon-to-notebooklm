@@ -30,7 +30,12 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
 1. Repo klonen oder als ZIP laden.
 2. `chrome://extensions` → **Entwicklermodus** an → **Entpackte Erweiterung laden** → diesen Ordner wählen.
 3. In diesem Chrome-Profil bei [notebooklm.google.com](https://notebooklm.google.com) **und** bei [StudOn](https://www.studon.fau.de) angemeldet sein.
-4. Kurs öffnen → unten rechts **⚡ NotebookLM** → „Export öffnen“ → **Scan starten** → **Export starten**.
+4. Kurs öffnen → unten rechts **⚡ NotebookLM** → im Dialog Inhalt und Notebook wählen → **Exportieren**.
+   Der Export-Tab öffnet sich, scannt und lädt ohne weiteren Klick hoch. „Mehr Einstellungen“ führt in die
+   ausführliche Ansicht (Einzelauswahl im Kursbaum, Drive-Spiegel, ZIP).
+
+Standard ist ein **neues Notebook** mit dem Kurstitel. Wurde der Kurs schon einmal exportiert, ist das damals
+verwendete Notebook vorausgewählt – so landet nur Neues dort und nichts wird doppelt angelegt.
 
 Die Extension-ID ist über den `key` im Manifest fest: `hceibhcelpeeniihfdlbfopkmnakhemd`.
 

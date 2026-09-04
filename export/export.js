@@ -14,6 +14,15 @@ const course = {
   url: params.get('url') || '',
 };
 
+/** Startparameter aus dem Dialog auf der StudOn-Seite (content/content.js). */
+const launch = {
+  autostart: params.get('autostart') === '1',
+  mode: params.get('mode') || '',                      // new | existing
+  notebookId: params.get('notebook') || '',
+  notebookTitle: params.get('nbtitle') || '',
+  scan: params.has('scan') ? new Set(params.get('scan').split(',').filter(Boolean)) : null,
+};
+
 const ui = {
   state: 'idle',
   tree: null,
@@ -79,8 +88,10 @@ async function init() {
 
   for (const input of document.querySelectorAll('#scan-toggles input')) {
     const opt = input.dataset.opt;
-    if (opt in ui.settings.scan) input.checked = !!ui.settings.scan[opt];
+    if (launch.scan) input.checked = launch.scan.has(opt);
+    else if (opt in ui.settings.scan) input.checked = !!ui.settings.scan[opt];
   }
+  if (launch.notebookTitle && launch.mode !== 'existing') $('target-title').value = launch.notebookTitle;
   $('opt-overview').checked = ui.settings.export.overviewSource !== false;
   $('opt-wait').checked = ui.settings.export.waitForProcessing !== false;
   $('opt-zip').checked = !!ui.settings.export.zip;
@@ -100,7 +111,40 @@ async function init() {
     $('target-auto').disabled = true;
   }
 
-  connectNotebookLM();
+  const connected = connectNotebookLM();
+  if (launch.mode || launch.autostart) await applyLaunch(connected);
+}
+
+/**
+ * Setzt Notebook-Wahl aus dem Dialog um und startet auf Wunsch sofort
+ * Scan und Export - ohne weiteren Klick.
+ */
+async function applyLaunch(connected) {
+  await connected;
+  if (launch.mode === 'existing' && launch.notebookId) {
+    const sel = $('target-existing');
+    if ([...sel.options].some((o) => o.value === launch.notebookId)) {
+      sel.value = launch.notebookId;
+      document.querySelector('input[name="target"][value="existing"]').checked = true;
+    } else if (ui.courseState.primaryNotebookId === launch.notebookId && !$('target-auto').disabled) {
+      $('target-auto').checked = true;
+    } else {
+      banner('Das gewählte Notebook wurde nicht gefunden - es wird ein neues angelegt.', 'info');
+      document.querySelector('input[name="target"][value="new"]').checked = true;
+    }
+  } else if (launch.mode === 'new') {
+    document.querySelector('input[name="target"][value="new"]').checked = true;
+  }
+
+  if (!launch.autostart) return;
+  if (!ui.nlm || !ui.nlm.at) return; // Banner mit Login-Hinweis steht bereits.
+  await runScan();
+  if (ui.state !== 'scanned') return;
+  if (!ui.plan || !ui.plan.jobs.length) {
+    banner('Nichts zu exportieren - alles ist bereits in NotebookLM oder abgewählt.', 'info');
+    return;
+  }
+  await runExport();
 }
 
 async function connectNotebookLM() {
