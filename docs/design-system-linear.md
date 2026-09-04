@@ -1,3 +1,5 @@
+> **Abgelöst (2026-09-04):** Die Extension nutzt jetzt das StudOn-Design – siehe `design-system-studon.md`.
+
 # Design System: Linear
 
 ## 1. Visual Theme & Atmosphere

@@ -74,8 +74,15 @@
   }
 
   function detectTitle() {
-    const h = document.querySelector('.il-page-content-header h1, .il-page-content-header, h1.ilHeader, .ilHeader h1, #il_center_col h1');
-    let title = h ? h.textContent.trim() : '';
+    // Erst echte Ueberschriften; der Kopf-Container enthaelt sonst auch "Aktionen" und unseren Button.
+    const h = document.querySelector('.il-page-content-header h1, #il_mhead_t_focus, h1.ilHeader, .ilHeader h1, #il_center_col h1')
+      || document.querySelector('.il-page-content-header');
+    let title = '';
+    if (h) {
+      const clone = h.cloneNode(true);
+      for (const el of clone.querySelectorAll('#il_head_action, .ilHeadAction, #s2n-trigger, .btn-group')) el.remove();
+      title = clone.textContent.trim();
+    }
     if (!title) title = document.title.replace(/\s*[:\-–]\s*StudOn\s*$/i, '').replace(/^Inhalt\s*[:\-–]\s*/i, '').trim();
     return title.replace(/\s+/g, ' ');
   }
@@ -90,16 +97,17 @@
   const host = document.createElement('div');
   host.id = 's2n-host';
   const root = host.attachShadow({ mode: 'open' });
+  const ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H4.5A1.5 1.5 0 0 1 3 12V2.5z"/><path d="M3 12a1.5 1.5 0 0 1 1.5-1.5H12"/><path d="M6 5.5h3.5M6 8h3.5"/></svg>';
   root.innerHTML = `
     <link rel="stylesheet" href="${chrome.runtime.getURL('content/content.css')}">
-    <button type="button" class="badge" id="badge" title="${label} nach NotebookLM exportieren">
-      <span class="bolt">⚡</span><span>NotebookLM</span>
+    <button type="button" class="badge" id="badge" title="${label} nach NotebookLM exportieren" hidden>
+      ${ICON}<span>NotebookLM</span>
     </button>
 
     <div class="backdrop" id="backdrop" hidden>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
         <header>
-          <div class="eyebrow"><span class="bolt">⚡</span> Nach NotebookLM</div>
+          <div class="eyebrow">${ICON} Export nach NotebookLM</div>
           <button type="button" class="close" id="close" aria-label="Schließen">×</button>
           <h1 id="dlg-title"></h1>
           <div class="meta" id="meta"></div>
@@ -294,6 +302,24 @@
     backdrop.classList.remove('in');
     setTimeout(() => { backdrop.hidden = true; }, 160);
   }
+
+  // Auslöser: als StudOn-Button neben "Aktionen" im Kopfbereich (erbt das Seiten-CSS,
+  // sieht also exakt aus wie das Original); nur ohne diesen Bereich schwebt ein Ersatz-Button.
+  function mountTrigger() {
+    const actions = document.querySelector('#il_head_action #tttt') || document.getElementById('il_head_action');
+    if (!actions) return false;
+    const group = document.createElement('div');
+    group.className = 'btn-group';
+    group.id = 's2n-trigger';
+    group.style.marginRight = '6px';
+    group.innerHTML = `<button type="button" class="btn btn-default" title="${label} nach NotebookLM exportieren">${ICON.replace('<svg ', '<svg style="width:13px;height:13px;vertical-align:-2px;margin-right:4px" ')}<span class="hidden-xs">NotebookLM</span></button>`;
+    const firstGroup = actions.querySelector('.btn-group');
+    if (firstGroup) actions.insertBefore(group, firstGroup);
+    else actions.appendChild(group);
+    group.querySelector('button').addEventListener('click', open);
+    return true;
+  }
+  if (!mountTrigger()) $('badge').hidden = false;
 
   $('badge').addEventListener('click', open);
   $('close').addEventListener('click', close);
