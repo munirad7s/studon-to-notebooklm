@@ -119,3 +119,24 @@ test('treeToOverview renders the structure as markdown', async () => {
   assert.match(md, /- 📁 Übungsblätter \(Abschnitt: Übungen\)\n  - 📄 Blatt_01.pdf \(226,41 KB\)/);
   assert.match(md, /⏭ Probeklausur/);
 });
+
+test('collectItems reads tile decks and legacy rows on the same page (HCI course, ref 6748584)', () => {
+  const doc = new DOMParser().parseFromString(fx.mixedPage, 'text/html');
+  const items = collectItems(doc);
+  assert.equal(items.length, 7, 'legacy rows and cards are both collected');
+
+  const analysis = items.find((i) => i.refId === '6815140');
+  assert.ok(analysis, 'card from the tile deck is found');
+  assert.equal(analysis.type, 'lm');
+  assert.equal(analysis.title, 'Analysis', 'title link wins over the empty image link');
+  assert.equal(analysis.section, 'Lecture Content');
+  assert.match(analysis.description, /June 2nd/);
+
+  const faq = items.find((i) => i.refId === '6815126');
+  assert.equal(faq.type, 'copa');
+  assert.equal(faq.title, 'FAQ HCI-Lecture and Exercise');
+  assert.equal(faq.section, "FAQ's and additive Informations");
+  assert.equal(faq.description, 'Frequently asked questions');
+
+  assert.equal(items.filter((i) => i.type === 'lm').length, 3);
+});

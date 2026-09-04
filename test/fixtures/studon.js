@@ -166,3 +166,70 @@ export function fakeFetch(map, { loginFor = [] } = {}) {
   fetch.calls = calls;
   return fetch;
 }
+
+/* ---------- Kachelansicht und klassische Listenzeilen ----------
+ * Objektgruppen koennen in ILIAS 9 als Kacheln ("Kachelansicht", .il-deck > .il-card)
+ * angezeigt werden; aeltere Bloecke rendern als .ilCLI-Listenzeilen. Beide Formen
+ * stehen z. B. im HCI-Kurs (ref 6748584) auf derselben Seite. Markup 1:1 aus dem
+ * Live-DOM uebernommen (Dropdown-Menues gekuerzt).
+ */
+
+export function card({ type, refId, title, description = '' }) {
+  return `
+  <div class="col-xs-6 col-sm-3 col-md-3 col-lg-2"><div class="il-card thumbnail">
+    <div class="il-card-repository-head">
+      <div><img class="icon custom medium" src="./Customizing/global/skin/studon9skin/studon9style/images/standard/icon_${type}.svg" alt="Lernmodul ILIAS"></div>
+      <div></div>
+      <div class="il-card-repository-dropdown"><div class="dropdown"><button class="btn btn-default dropdown-toggle" type="button" aria-label="Aktionen für ${title}"><span class="caret"></span></button>
+        <ul class="dropdown-menu"><li><button class="btn btn-link" data-action="ilias.php?baseClass=illmpresentationgui&amp;cmd=infoScreen&amp;ref_id=${refId}">Info</button></li></ul></div></div>
+    </div>
+    <div class="il-card-image-container"><a href="https://www.studon.fau.de/studon/go/${type}/${refId}"><img src="https://www.studon.fau.de/studon/src/FileDelivery/deliver.php/x" class="img-responsive" alt="Öffnen ${title}"></a></div>
+    <div class="card-no-highlight"></div>
+    <div class="caption card-title"><a href="https://www.studon.fau.de/studon/go/${type}/${refId}">${title}<span data-list-item-id="lg_div_${refId}_pref_6748584"></span></a></div>
+    ${description ? `<div class="caption"><div class="il-multi-line-cap-3">${description}</div></div>` : ''}
+  </div></div>`;
+}
+
+export function deck(header, cardsHtml) {
+  return `
+  <div class="ilContainerBlock form-inline">
+    <div class="ilHeader ilContainerBlockHeader "><h2>${header}</h2></div>
+    <div class="ilContainerItemsContainer "><div class="ilContainerTileRows"><div class="il-deck"><div class="row row-eq-height">${cardsHtml}</div></div></div></div>
+  </div>`;
+}
+
+export function legacyRow({ type, refId, title, description = '' }) {
+  return `
+  <div class="ilCLI ilObjListRow"><div class="ilContainerListItemOuter">
+    <div class="ilContainerListItemIcon"><img class="ilListItemIcon" src="./Customizing/global/skin/studon9skin/studon9style/images/standard/icon_${type}.svg" alt="x"></div>
+    <div class="ilContainerListItemContent"><div class="il_ContainerListItem">
+      <div class="il_ContainerItemTitle form-inline"><h3 class="il_ContainerItemTitle"><a class="il_ContainerItemTitle" href="https://www.studon.fau.de/studon/go/${type}/${refId}">${title}</a></h3></div>
+      ${description ? `<div class="il_Description">${description}</div>` : ''}
+    </div></div>
+  </div></div>`;
+}
+
+export function legacyBlock(header, rowsHtml) {
+  return `
+  <div class="ilContainerBlock form-inline">
+    <div class="ilHeader ilContainerBlockHeader "><h2>${header}</h2></div>
+    <div class="ilContainerItemsContainer ">${rowsHtml}</div>
+  </div>`;
+}
+
+/** Kurs mit gemischter Darstellung: Listenzeilen + Kachel-Block, wie ref 6748584. */
+export const mixedPage = page('Human Computer Interaction (SoSe26)', `
+  ${legacyBlock("FAQ's and additive Informations", [
+    legacyRow({ type: 'copa', refId: '6815126', title: 'FAQ HCI-Lecture and Exercise', description: 'Frequently asked questions' }),
+    legacyRow({ type: 'glo', refId: '6815127', title: 'HCI Glossary' }),
+  ].join(''))}
+  ${legacyBlock('Discussion, Community and Exercises', [
+    legacyRow({ type: 'fold', refId: '6815060', title: 'Discussion Sessions' }),
+    legacyRow({ type: 'frm', refId: '6815059', title: 'HCI-Forum' }),
+  ].join(''))}
+  ${deck('Lecture Content', [
+    card({ type: 'lm', refId: '6815140', title: 'Analysis', description: 'Please learn the contents for the discussion session on June 2nd.' }),
+    card({ type: 'lm', refId: '6815138', title: 'Evaluation 1', description: 'Please learn the contents for the discussion session on May 19th.' }),
+    card({ type: 'lm', refId: '6815119', title: 'Introduction to HCI', description: 'Content for discussion session on April 21st.' }),
+  ].join(''))}
+`);
