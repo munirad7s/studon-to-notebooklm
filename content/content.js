@@ -24,7 +24,7 @@
     { label: 'Lernmodule', opts: ['learningModules'] },
     { label: 'Übungen & Sitzungen', opts: ['exercises', 'sessions'] },
     { label: 'Seiten & Glossare', opts: ['pages', 'wiki', 'glossary', 'courseInfo'] },
-    { label: 'Links & Videos', opts: ['weblinks', 'fauTv'] },
+    { label: 'Links & Videos', opts: ['weblinks', 'fauTv', 'media'] },
   ];
   const CHIP_OPTS = new Set(CHIPS.flatMap((c) => c.opts));
 
@@ -241,7 +241,7 @@
     const data = await storageGet(['settings', `course:${obj.refId}`]);
     const scanDefaults = {
       files: true, learningModules: true, pages: true, wiki: true, glossary: true, exercises: true,
-      sessions: true, forum: false, media: false, weblinks: true, fauTv: true, courseInfo: true,
+      sessions: true, forum: false, media: true, weblinks: true, fauTv: true, courseInfo: true,
     };
     state.scan = { ...scanDefaults, ...((data.settings && data.settings.scan) || {}) };
     renderChips();

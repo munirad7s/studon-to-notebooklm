@@ -233,3 +233,84 @@ export const mixedPage = page('Human Computer Interaction (SoSe26)', `
     card({ type: 'lm', refId: '6815119', title: 'Introduction to HCI', description: 'Content for discussion session on April 21st.' }),
   ].join(''))}
 `);
+
+/* ---------- Legacy-Zeile mit Eigenschaften, News-Block, Video-Objekte ----------
+ * Aus dem Survey ueber 65 Kurse (2026-09-04): Listenzeilen tragen Endung/Groesse/Datum
+ * als `.il_ItemProperty`, Titel oft ohne Endung ("Cover Templates" ist ein zip);
+ * News-Eintraege verlinken mit ref_id des Kurses; HTML-Lernmodule liefern beim Aufruf
+ * direkt ein MP4; das Plugin "Interaktives Video" (xvid) bettet ein lokales MP4 mit
+ * il_wac_token ein.
+ */
+
+export function legacyRowWithProps({ type, refId, title, props = [], href = null }) {
+  const link = href || `https://www.studon.fau.de/studon/ilias.php?baseClass=ilrepositorygui&amp;cmdNode=13a:ry&amp;cmdClass=ilObjFileGUI&amp;cmd=sendfile&amp;ref_id=${refId}`;
+  return `
+  <div class="ilCLI ilObjListRow"><div class="ilContainerListItemOuter">
+    <div class="ilContainerListItemIcon"><img alt="Datei" title="Datei" src="./Customizing/global/skin/studon9skin/studon9style/images/standard/icon_${type}.svg" class="ilListItemIcon"></div>
+    <div class="ilContainerListItemContent"><div class="il_ContainerListItem">
+      <div class="il_ContainerItemTitle form-inline"><h3 class="il_ContainerItemTitle"><a href="${link}" class="il_ContainerItemTitle">${title}</a></h3></div>
+      <div class="ilListItemSection il_Description"></div>
+      <div class="ilListItemSection il_ItemProperties">${props.map((p) => `<span class="il_ItemProperty"> ${p}&nbsp;&nbsp;</span>`).join('')}</div>
+    </div></div>
+  </div></div>`;
+}
+
+export function newsBlock(courseRef) {
+  return `
+  <div class="ilBlock"><div class="ilBlockHeader"><h2>Neuigkeiten</h2></div>
+    <div class="il_ContainerListItem"><h3 class="il_ContainerItemTitle"><a class="il_ContainerItemTitle" href="ilias.php?baseClass=ilrepositorygui&amp;cmdNode=13a:r4:a5:pm&amp;cmdClass=ilNewsForContextBlockGUI&amp;cmd=showNews&amp;ref_id=${courseRef}&amp;news_id=1">Es wurde eine Datei hinzugefügt.</a></h3></div>
+  </div>`;
+}
+
+export const VIDEO_COURSE_REF = '5000443';
+export const HTLM_REF = '7020332';
+export const XVID_REF = '3524459';
+export const HTLM_VIDEO_URL = 'https://www.studon.fau.de/studon/data/StudOn/lm_data/lm_9810384/Vorlesung_Marketing_10.06.2026.mp4';
+export const XVID_VIDEO_URL = 'https://www.studon.fau.de/studon/data/StudOn/mobs/mm_4849958/PLB_Logistik_VL1.mp4?il_wac_token=006f1a0e36bb876b';
+
+export const videoCoursePage = page('1.1. Vorlesungsaufzeichnungen', `
+  ${legacyRowWithProps({ type: 'htlm', refId: HTLM_REF, title: 'Vorlesung_Marketing_10.06.2026', href: `https://www.studon.fau.de/studon/ilias.php?baseClass=ilHTLMPresentationGUI&amp;ref_id=${HTLM_REF}` })}
+  ${legacyRowWithProps({ type: 'xvid', refId: XVID_REF, title: 'Vorlesung 1_1 - Vorstellung und Organisatorisches', href: `https://www.studon.fau.de/studon/ilias.php?baseClass=ilObjPluginDispatchGUI&amp;cmd=forward&amp;ref_id=${XVID_REF}&amp;forwardCmd=showContent` })}
+  ${legacyRowWithProps({ type: 'file', refId: '6148564', title: 'Cover Templates', props: ['zip', '1,20 MB', '12. Mär 2026, 10:05'] })}
+  ${legacyRowWithProps({ type: 'file', refId: '6148565', title: 'Skript.pdf', props: ['pdf', '450 KB', 'Gestern, 14:11'] })}
+  ${newsBlock(VIDEO_COURSE_REF)}
+`);
+
+export const xvidPage = page('Vorlesung 1_1 - Vorstellung und Organisatorisches', `
+  <div class="ilToolbarContainer"></div>
+  <div class="row"><div class="col-md-12">
+    <video id="ilInteractiveVideo" class="plyr" controls>
+      <source src="./data/StudOn/mobs/mm_4849958/PLB_Logistik_VL1.mp4?il_wac_token=006f1a0e36bb876b" type="video/mp4">
+    </video>
+    <div class="ilc_text_block_Standard"><p>Einführung in Produktion, Logistik und Beschaffung. Organisatorisches zur Vorlesung, Prüfungsform und Literatur werden in dieser ersten Sitzung ausführlich erläutert.</p></div>
+  </div></div>`);
+
+/** Routen des Video-Kurses; das HTML-Lernmodul antwortet mit einem MP4 statt einer Seite. */
+export function videoRoutes() {
+  const app = 'https://www.studon.fau.de/studon';
+  return {
+    [`${app}/ilias.php?baseClass=ilrepositorygui&ref_id=${VIDEO_COURSE_REF}`]: videoCoursePage,
+    [`${app}/ilias.php?baseClass=ilObjPluginDispatchGUI&cmd=forward&ref_id=${XVID_REF}&forwardCmd=showContent`]: xvidPage,
+  };
+}
+
+/** fetch, der fuer das HTML-Lernmodul ein 261-MB-MP4 "liefert" (nur Header, Body wird verworfen). */
+export function videoFetch(map) {
+  const base = fakeFetch(map);
+  const app = 'https://www.studon.fau.de/studon';
+  const fetch = async (url, init) => {
+    if (url === `${app}/ilias.php?baseClass=ilHTLMPresentationGUI&ref_id=${HTLM_REF}`) {
+      let cancelled = false;
+      return {
+        ok: true, status: 200, url: HTLM_VIDEO_URL,
+        headers: new Map([['content-type', 'video/mp4'], ['content-length', String(273160896)]]),
+        body: { cancel: async () => { cancelled = true; } },
+        text: async () => { throw new Error('Body eines 261-MB-Videos darf nicht gelesen werden'); },
+        get cancelled() { return cancelled; },
+      };
+    }
+    return base(url, init);
+  };
+  fetch.calls = base.calls;
+  return fetch;
+}

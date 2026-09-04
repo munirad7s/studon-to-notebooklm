@@ -166,3 +166,36 @@ funktionierende Skripte `scripts/download_course.py`, `scripts/download_hci_lm_f
 3. Export in ein neues Notebook, Quellen-Status in NotebookLM prüfen (Upload → processing → ready).
 4. Zweiter Lauf: nur neue Dateien werden ergänzt.
 5. Optional Drive: Client-ID in den Optionen, Freigabe, Ordner in „Meine Ablage/NotebookLM Import/<Kurs>“ prüfen.
+
+## 9. Survey ueber 65 eigene Kurse (2026-09-04, mac-munir, eingeloggt im Browser-Pane)
+
+Skript im StudOn-Tab: Mitgliedschaftsuebersicht → jeden Kurs bis Tiefe 3 rekursiv gelesen (368 Requests).
+
+**Layouts:** 2 672 Legacy-Listenzeilen (`.ilCLI > .ilContainerListItemOuter`), nur 31 ILIAS-9-Items
+(`.il-std-item`), 20 Kacheln (`.il-card`). Der Legacy-Pfad ist also der Normalfall, nicht der Fallback.
+Folgen fuer den Parser:
+- Outer- und Inner-Element einer Legacy-Zeile zeigen auf dieselbe `ref_id`; nur das Outer traegt das Icon.
+  Dedupe muss pro `ref_id` passieren (vorher: zweiter Eintrag mit Typ `?` → Container-Probe → Muell-Knoten).
+- Eigenschaften stehen als `.il_ItemProperty`-Spans: `pdf · 1,20 MB · 12. Mär 2026, 10:05`. Viele Dateititel
+  haben keine Endung ("Cover Templates" ist ein zip; in Software-Engineering-Kursen 20-30 solcher Dateien pro Kurs).
+- News-Block-Eintraege (`cmdClass=ilNewsForContextBlockGUI`) und Aktionslinks sehen wie Objekte aus → ausschliessen.
+
+**Objekttypen (Summe):** fold 803, frm 122, file 162, webr 61, htlm 27, lm 21, exc 27, xvid 13, mcst 4,
+grp 16, sess 3, copa 3, dcl 3, book 5, crsr 5, xcos 3, xpdl 3, xxco 2, tst 3, svy 2, glo 2, mep 1, bibl 1, catr 1.
+
+**Videos:**
+- `htlm` (HTML-Lernmodul) in Marketing-Kursen = Vorlesungsaufzeichnung: `ilias.php?baseClass=ilHTLMPresentationGUI&ref_id=`
+  leitet **direkt auf das MP4** (261-272 MB, 83 min, 720p, ~440 kbit/s). `go/htlm/<ref>` landet dagegen auf dem
+  Info-Reiter (HTML) – deshalb die Praesentations-URL benutzen und den Content-Type pruefen, bevor `res.text()`
+  260 MB in den Speicher zieht.
+- `xvid` = Plugin "Interaktives Video" (`ilObjInteractiveVideoGUI`): `ilias.php?baseClass=ilObjPluginDispatchGUI&cmd=forward&ref_id=<ref>&forwardCmd=showContent`,
+  Seite enthaelt `<video><source src="./data/StudOn/mobs/mm_<id>/<name>.mp4?il_wac_token=…">` (Token zeitlich begrenzt)
+  oder eine fau.tv-Einbettung (plyr).
+- fau.tv-Links: 356 in den Kursen – Transkript-Import (Abschnitt 8) lohnt.
+- NotebookLM nimmt 200 MB/Datei → Tonspur statt Video (`lib/audio-extract.js`: mp4box.js demuxt, eigener Muxer schreibt .m4a).
+
+**Plugins ohne Inhalt fuer NotebookLM:** `xcos` = CoSub-Anmeldung (Prioritaeten), `xpdl` = Etherpad (iframe auf
+etherpad233.studon.fau.de), `xxco` unbekannt → uebersprungen.
+
+**Sonstiges:** Kurse ohne Inhalt (`#il_center_col` leer) existieren; Kursreferenzen (`crsr`) werden nicht verfolgt;
+Mathematik-Kurse haben 200-360 Ordner (Tiefe > 3) – `maxDepth` 15 reicht, dauert aber.

@@ -68,6 +68,14 @@
     PAGES['https://www.studon.fau.de/studon/ilias.php?baseClass=ilLMPresentationGUI&ref_id=6815119&obj_id=102'] =
       fx.lmPage('Definitionen', '<p class="ilc_Paragraph"><a class="ilc_link_ExtLink" href="https://www.fau.tv/clip/id/42516">https://www.fau.tv/clip/id/42516</a></p>');
     const fauTvFetch = ftv.fakeFauTvFetch();
+    // Video-Kurs (HTML-Lernmodul mit MP4-Startdatei, Interaktives Video) als Unterordner des Kurses:
+    // die Kursseite bekommt einen zusaetzlichen Ordner, der auf die Video-Routen zeigt.
+    Object.assign(PAGES, fx.videoRoutes());
+    PAGES['https://www.studon.fau.de/studon/ilias.php?baseClass=ilrepositorygui&ref_id=' + fx.COURSE_REF] =
+      fx.coursePage.replace('</body>', fx.legacyRowWithProps({ type: 'fold', refId: fx.VIDEO_COURSE_REF, title: '1.1. Vorlesungsaufzeichnungen', href: 'https://www.studon.fau.de/studon/go/fold/' + fx.VIDEO_COURSE_REF }) + '</body>');
+    const HTLM_PRESENTATION = 'https://www.studon.fau.de/studon/ilias.php?baseClass=ilHTLMPresentationGUI&ref_id=' + fx.HTLM_REF;
+    // window.fetch ist hier noch das Original (die Umleitung kommt weiter unten).
+    const sampleVideo = await (await window.fetch('../test/fixtures/sample-av.mp4')).arrayBuffer();
 
     const NLM_HOME =
       '<html><script>{"SNlM0e":"harness-token","cfb2h":"boq_harness","FdrFJe":"-1","oPEP7c":"harness@fau.de"}<\/script></html>';
@@ -99,6 +107,13 @@
       }
 
       if (url.includes('studon.fau.de')) {
+        // HTML-Lernmodul: Aufruf "leitet" auf ein MP4 - hier das 21-KB-Fixture mit Video-Headern.
+        if (url === HTLM_PRESENTATION || /\.mp4(\?|$)/.test(url)) {
+          return Object.defineProperty(
+            new Response(sampleVideo.slice(0), { headers: { 'content-type': 'video/mp4', 'content-length': String(sampleVideo.byteLength) } }),
+            'url', { value: url === HTLM_PRESENTATION ? fx.HTLM_VIDEO_URL : url }
+          );
+        }
         if (/target=file_|cmd=(send|download)[Ff]ile|cmd=sendfile/.test(url)) {
           return new Response(new Blob(['%PDF-1.4 harness']), {
             headers: {

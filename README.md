@@ -26,6 +26,10 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
    - **FAU.tv-Videos** werden nicht heruntergeladen (HLS-Stream, für NotebookLM zu groß) – stattdessen holt die
      Extension das fertige **Whisper-Transkript** des Videoportals und legt es als Textquelle mit Zeitmarken an.
      Voraussetzung: im selben Chrome-Profil bei [www.fau.tv](https://www.fau.tv) angemeldet, falls der Clip das verlangt.
+   - **Vorlesungsaufzeichnungen auf StudOn** (HTML-Lernmodul mit MP4, „Interaktives Video“, Mediacast) werden nicht
+     als Video hochgeladen: NotebookLM nimmt 200 MB pro Datei und wertet ohnehin nur den Ton aus. Die Extension löst
+     die Tonspur ohne Neukodierung heraus (`.m4a`, typisch 60–90 MB pro 90 Minuten) und lädt diese hoch – NotebookLM
+     transkribiert sie selbst. Abschaltbar unter „Videos nur als Tonspur hochladen“.
 4. **Sync** – Die Extension merkt sich pro Kurs, was schon in welchem Notebook liegt. Der nächste Lauf lädt nur Neues nach.
 
 ## Installation

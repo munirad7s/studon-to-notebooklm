@@ -190,3 +190,75 @@ test('Option fauTv=false laesst fau.tv-Links unangetastet', async () => {
   assert.equal(lm.children.some((n) => /^Transkript – /.test(n.title || '')), false);
   assert.equal(fautv.calls.length, 0, 'fau.tv wird nicht kontaktiert');
 });
+
+/* ---------- Video-Objekte, Legacy-Eigenschaften, News ---------- */
+
+test('Legacy-Zeilen: keine Dubletten, Endung/Groesse/Datum aus den Eigenschaften, News ignoriert', () => {
+  const doc = new DOMParser().parseFromString(fx.videoCoursePage, 'text/html');
+  const items = collectItems(doc);
+  assert.equal(items.length, 4, 'vier Objekte, kein News-Eintrag, keine Outer/Inner-Dublette');
+  assert.equal(items.filter((i) => !i.type).length, 0, 'jedes Objekt hat einen Typ (Icon der Outer-Zeile)');
+
+  const zip = items.find((i) => i.refId === '6148564');
+  assert.equal(zip.type, 'file');
+  assert.equal(zip.ext, 'zip');
+  assert.equal(zip.sizeText, '1,20 MB');
+  assert.equal(zip.modified, '12. Mär 2026, 10:05');
+
+  const pdf = items.find((i) => i.refId === '6148565');
+  assert.equal(pdf.ext, 'pdf');
+  assert.equal(pdf.modified, 'Gestern, 14:11');
+  assert.equal(items.find((i) => i.refId === fx.HTLM_REF).type, 'htlm');
+  assert.equal(items.find((i) => i.refId === fx.XVID_REF).type, 'xvid');
+});
+
+test('HTML-Lernmodul mit MP4 als Startdatei wird zur Videodatei mit Groesse - ohne den Body zu lesen', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const htlm = root.children.find((n) => n.refId === fx.HTLM_REF);
+  assert.ok(htlm, 'htlm-Knoten');
+  const video = htlm.children.find((n) => n.kind === 'file');
+  assert.ok(video, 'Videodatei unter dem Lernmodul');
+  assert.equal(video.filename, 'Vorlesung_Marketing_10.06.2026.mp4');
+  assert.equal(video.downloadUrl, fx.HTLM_VIDEO_URL);
+  assert.equal(video.sizeBytes, 273160896);
+  assert.equal(video.contentType, 'video/mp4');
+  assert.equal(htlm.errors.length, 0, JSON.stringify(htlm.errors));
+});
+
+test('Interaktives Video (xvid) liefert das eingebettete MP4 mit WAC-Token und die Beschreibung', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const xvid = root.children.find((n) => n.refId === fx.XVID_REF);
+  assert.ok(xvid, 'xvid-Knoten');
+  assert.equal(xvid.kind, 'container');
+  const video = xvid.children.find((n) => n.kind === 'file');
+  assert.ok(video, 'Videodatei');
+  assert.equal(video.downloadUrl, fx.XVID_VIDEO_URL);
+  assert.match(video.filename, /\.mp4$/);
+  assert.ok(xvid.children.some((n) => n.kind === 'text' && /^Video – /.test(n.title)), 'Beschreibung als Text');
+});
+
+test('Dateien ohne Endung im Titel bekommen die Endung aus den Eigenschaften', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const zip = root.children.find((n) => n.refId === '6148564');
+  assert.equal(zip.kind, 'file');
+  assert.equal(zip.filename, 'Cover Templates.zip');
+  assert.equal(zip.sizeBytes, Math.round(1.2 * 1024 * 1024));
+  const skipped = root.children.filter((n) => n.kind === 'skipped');
+  assert.equal(skipped.length, 0, 'keine "unbekannter Typ"-Knoten aus News oder Dubletten');
+});
+
+test('media=false laesst Videos aus HTML-Lernmodul und xvid aus', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, media: false } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const xvid = root.children.find((n) => n.refId === fx.XVID_REF);
+  assert.equal(xvid.kind, 'skipped');
+  const htlm = root.children.find((n) => n.refId === fx.HTLM_REF);
+  assert.ok(htlm.children.some((n) => n.kind === 'file'), 'htlm-Video bleibt (Lernmodul-Option), nur Plugin-Videos haengen an media');
+});

@@ -9,6 +9,7 @@
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {
-    "linkedom": "^0.18.5"
+    "linkedom": "^0.18.5",
+    "mp4box": "^2.4.1"
   }
 }

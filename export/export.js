@@ -2,6 +2,7 @@ import { StudOnCrawler, SessionExpiredError, flatten } from '../lib/crawler.js';
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { DriveClient, buildAuthUrl, parseTokenFromRedirect } from '../lib/drive-client.js';
 import { planExport, Exporter, itemKey } from '../lib/exporter.js';
+import { extractAudioBlob } from '../lib/audio-extract.js';
 import { getSettings, saveSettings, getCourseState, saveCourseState } from '../lib/storage.js';
 import { typeLabel, formatBytes, gotoUrl, repoUrl } from '../lib/ilias.js';
 
@@ -95,6 +96,7 @@ async function init() {
   $('opt-overview').checked = ui.settings.export.overviewSource !== false;
   $('opt-wait').checked = ui.settings.export.waitForProcessing !== false;
   $('opt-zip').checked = !!ui.settings.export.zip;
+  $('opt-video-audio').checked = ui.settings.export.videoAsAudio !== false;
   $('opt-drive-mirror').checked = !!ui.settings.export.driveMirror;
   $('opt-drive-source').checked = !!ui.settings.export.driveAsSource;
   if (!ui.settings.driveClientId) {
@@ -381,6 +383,7 @@ function exportSettingsFromUi() {
     overviewSource: $('opt-overview').checked,
     waitForProcessing: $('opt-wait').checked,
     zip: $('opt-zip').checked,
+    videoAsAudio: $('opt-video-audio').checked,
     driveMirror: $('opt-drive-mirror').checked && !!ui.settings.driveClientId,
     driveAsSource: $('opt-drive-source').checked && !!ui.settings.driveClientId,
     driveRootFolder: ui.settings.driveRootFolder,
@@ -395,7 +398,7 @@ function updatePlanSummary() {
   const skippedReasons = {};
   for (const s of ui.plan.skipped) skippedReasons[s.reason] = (skippedReasons[s.reason] || 0) + 1;
   const reasons = Object.entries(skippedReasons).map(([r, n]) => `${n}× ${r}`).join(', ');
-  $('plan-summary').textContent = `Geplant: ${c.files} Dateien, ${c.texts} Texte, ${c.links} Links${settings.overviewSource ? ', 1 Kursstruktur' : ''}` + (reasons ? ` · übersprungen: ${reasons}` : '');
+  $('plan-summary').textContent = `Geplant: ${c.files} Dateien${c.audio ? ` (davon ${c.audio} Videos als Tonspur)` : ''}, ${c.texts} Texte, ${c.links} Links${settings.overviewSource ? ', 1 Kursstruktur' : ''}` + (reasons ? ` · übersprungen: ${reasons}` : '');
   $('btn-export').disabled = ui.plan.jobs.length === 0 || !ui.nlm || !ui.nlm.at || ui.state === 'exporting';
 }
 
@@ -431,7 +434,7 @@ async function runExport() {
   for (const [, entry] of ui.nodes) { entry.status.hidden = true; entry.status.className = 'badge'; }
 
   const settings = exportSettingsFromUi();
-  await saveSettings({ export: { overviewSource: settings.overviewSource, waitForProcessing: settings.waitForProcessing, zip: settings.zip, driveMirror: settings.driveMirror, driveAsSource: settings.driveAsSource } });
+  await saveSettings({ export: { overviewSource: settings.overviewSource, waitForProcessing: settings.waitForProcessing, zip: settings.zip, videoAsAudio: settings.videoAsAudio, driveMirror: settings.driveMirror, driveAsSource: settings.driveAsSource } });
 
   const mode = document.querySelector('input[name="target"]:checked').value;
   const target = { mode, title: $('target-title').value.trim() || ui.tree.title };
@@ -464,6 +467,7 @@ async function runExport() {
     drive: ui.drive,
     fetch: (u, i) => fetch(u, i),
     JSZip: window.JSZip,
+    extractAudio: extractAudioBlob,
     settings: { ...settings, delayMs: 350 },
     state: ui.courseState,
     persist: (s) => saveCourseState(s),
