@@ -3,6 +3,19 @@
   "version": "2.0.0",
   "private": true,
   "description": "Chrome extension: export complete FAU StudOn courses into Google NotebookLM (direct upload, Google Drive mirror, ZIP fallback).",
+  "license": "MIT",
+  "author": "Munir Adas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/munirad7s/studon-to-notebooklm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/munirad7s/studon-to-notebooklm/issues"
+  },
+  "homepage": "https://github.com/munirad7s/studon-to-notebooklm#readme",
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "test": "node --test",

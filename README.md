@@ -1,5 +1,12 @@
 # StudOn → NotebookLM (Chrome-Extension)
 
+> **English:** Chrome extension that exports a complete [FAU StudOn](https://www.studon.fau.de) (ILIAS 9)
+> course – files, learning modules, exercises, lecture recordings as audio tracks, fau.tv transcripts – straight
+> into a [Google NotebookLM](https://notebooklm.google.com) notebook. Runs entirely in the browser with your
+> existing sessions; no server, no API keys. Documentation is in German because the audience is FAU students.
+> Unofficial project, not affiliated with FAU or Google. **Status: Beta.**
+
+
 Exportiert einen kompletten **FAU-StudOn-Kurs** mit einem Klick nach **Google NotebookLM** – rekursiv über alle Ordner,
 Sitzungen, Übungen, Lernmodule, Inhaltsseiten, Wikis, Glossare und Weblinks. Optional wird alles zusätzlich nach
 **Google Drive** gespiegelt (und dort als syncbare NotebookLM-Quellen verknüpft) oder als **ZIP** gespeichert.
@@ -94,3 +101,24 @@ Protokoll- und Struktur-Details: [`docs/FINDINGS.md`](docs/FINDINGS.md), Archite
 | „StudOn-Session abgelaufen“ | In StudOn neu einloggen, Scan wiederholen |
 | „RPC … fehlt in der Antwort“ | Google hat eine RPC-ID rotiert – IDs in `lib/nlm-client.js` (`RPC`) anpassen, siehe `docs/FINDINGS.md` |
 | Datei „liefert keine Datei“ | Kein Leserecht oder Objekt ist keine Datei – wird übersprungen und im Ergebnis gelistet |
+
+## Datenschutz & Sicherheit
+
+- Alles läuft lokal im Browser. Es gibt keinen Server dieses Projekts, keine Telemetrie, keine Analytics.
+- Die Extension spricht nur mit **StudOn** (Kursinhalte lesen), **fau.tv** (Transkripte), **NotebookLM**
+  (Quellen anlegen) und – nur wenn du es einrichtest – **Google Drive**. Die dafür nötigen Host-Rechte
+  stehen im `manifest.json`; weitere Domains gibt es nicht.
+- Es werden keine Zugangsdaten gespeichert oder abgefragt; genutzt werden die Sessions, mit denen du im
+  Chrome-Profil ohnehin angemeldet bist. Der Drive-Zugriff ist auf `drive.file` beschränkt (nur Dateien,
+  die die Extension selbst anlegt).
+- Gespeichert wird in `chrome.storage.local`: Einstellungen und pro Kurs, welche Objekte bereits in welchem
+  Notebook liegen. „Zurücksetzen“ in den Optionen löscht das.
+- Die NotebookLM-Schnittstelle ist nicht öffentlich dokumentiert; Google kann sie jederzeit ändern. Die aktuell
+  genutzten Aufrufe sind in [`docs/FINDINGS.md`](docs/FINDINGS.md) festgehalten.
+- Kursinhalte unterliegen dem Urheberrecht der Lehrenden. Der Export ist für dein persönliches Lernen gedacht –
+  Notebooks mit Kursmaterial bitte nicht öffentlich teilen.
+
+## Lizenz
+
+[MIT](LICENSE). Gebündelte Fremdsoftware und ihre Lizenzen: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Mitmachen: [CONTRIBUTING.md](CONTRIBUTING.md).

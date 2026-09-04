@@ -1,9 +1,9 @@
 # Findings: StudOn → NotebookLM (Stand 2026-09-04)
 
-Alles, was die Session auf `rescue-windows` (Claude Code, Fable 5.1) herausgefunden hat.
-Ziel: jeder Agent/Laptop kann damit ohne erneute Recherche weiterbauen.
+Gesammelte Befunde aus der Entwicklung (Protokolle, Markup, Grenzen).
+Ziel: jede*r kann damit ohne erneute Recherche weiterbauen.
 
-## 1. Warum die v1 von agy nicht funktioniert hat
+## 1. Warum die v1 nicht funktioniert hat
 
 - `content/content.bundle.js` = JSZip + eingebetteter Crawler + UI. Der Export war **nur ein ZIP-Download**,
   danach wurde lediglich `notebooklm.google.com` in einem Tab geöffnet. Kein Upload, keine Drive-Anbindung.
@@ -19,7 +19,7 @@ Ziel: jeder Agent/Laptop kann damit ohne erneute Recherche weiterbauen.
 
 Quellen: die installierte Chrome-Extension „YouTube to NotebookLM“ (ID `kobncfkmjelbefaoohoblamnbackjggk`,
 `build/background.js`) und das installierte CLI `notebooklm-mcp-cli` v0.9.14
-(`%APPDATA%\uv\tools\notebooklm-mcp-cli\Lib\site-packages\notebooklm_tools\core\{base,sources,notebooks}.py`).
+(`notebooklm_tools/core/{base,sources,notebooks}.py`).
 
 ### Hosts und Tokens
 
@@ -93,8 +93,8 @@ Bei Überschreitung kommt Fehlercode 8 → Overflow-Notebook „<Titel> (2)“ a
 
 ## 3. StudOn (ILIAS 9): Struktur und Selektoren
 
-Quellen: `C:\Users\rescue\Code\fau-mcp` (eigener Python-Scraper von Munir, Snapshots in `docs/*.html`,
-funktionierende Skripte `scripts/download_course.py`, `scripts/download_hci_lm_files.py`).
+Quellen: ein eigener Python-Scraper (fau-mcp) mit HTML-Snapshots echter StudOn-Seiten und funktionierenden
+Download-Skripten für Kurse und Lernmodule.
 
 - Kein REST-Plugin (`restplugin.php` → 404). Alles über gerendertes HTML mit Session-Cookie.
 - Objekt-Links: `https://www.studon.fau.de/studon/go/<typ>/<ref_id>` (auch `goto.php?target=<typ>_<ref_id>`).
@@ -119,7 +119,7 @@ funktionierende Skripte `scripts/download_course.py`, `scripts/download_hci_lm_f
 - Übungen/Sitzungen/Mediacast: generische Erkennung über `cmd=download*`, `cmd=sendfile`, `target=file_…_download`;
   Sitzungen listen Materialien als Standard-Items (`go/file/…`).
 - Session abgelaufen: Redirect auf `sso.uni-erlangen.de` bzw. Login-Formular (`name="password"`). Mit `redirect: follow`
-  liefert der Login 200 → immer die finale URL/HTML prüfen (Falle aus `fau-mcp/docs/findings.md`).
+  liefert der Login 200 → immer die finale URL/HTML prüfen (bekannte Falle).
 - ILIAS-9-Templates auf GitHub liegen im Branch `release_9` unter `Modules/<Name>/templates/default/` (nicht `components/ILIAS/`).
 
 ## 4. Google Drive „direkt“
@@ -148,16 +148,6 @@ funktionierende Skripte `scripts/download_course.py`, `scripts/download_hci_lm_f
 - Inkrementell: pro Kurs-`ref_id` werden Notebook-ID und hochgeladene Objekte (`ref_id`/Hash → sourceId) gespeichert.
 - Tests: `node --test` mit `linkedom` als DOMParser, Fixtures aus echtem StudOn-Markup.
 
-## 6. Umgebungs-Notizen (rescue-windows)
-
-- Diese Claude-Session lief per SSH (Tailnet). Folge: Windows-Credential-Manager unerreichbar (`CredRead` Fehler 1312),
-  also keine fau-mcp-SSO-Anmeldung möglich; der Claude-in-Chrome-Connector meldete „not connected“.
-- Chrome-Profile: Claude-Extension in „Profile 1“ und „Profile 4“, zuletzt genutzt „Profile 6“ (ohne Claude-Extension).
-  YouTube-to-NotebookLM liegt in „Profile 1“.
-- `nlm`-CLI ist installiert, aber die uv-Python-Umgebung fehlt (`No Python at …cpython-3.11…`) →
-  `uv tool install notebooklm-mcp-cli --reinstall`. Die gespeicherten nlm-Cookies (26.08.) sind abgelaufen.
-- `gh` CLI-Token ungültig; GitHub-MCP (OAuth) funktioniert. `GITHUB_TOKEN` in `~/.secrets/master.env` funktioniert für git-Pushes.
-- `git push` mit `main` in derselben Zeile wird von einem Hook blockiert → Feature-Branch + PR + Merge.
 
 ## 7. Live-Verifikation, die noch aussteht
 
@@ -167,9 +157,9 @@ funktionierende Skripte `scripts/download_course.py`, `scripts/download_hci_lm_f
 4. Zweiter Lauf: nur neue Dateien werden ergänzt.
 5. Optional Drive: Client-ID in den Optionen, Freigabe, Ordner in „Meine Ablage/NotebookLM Import/<Kurs>“ prüfen.
 
-## 9. Survey ueber 65 eigene Kurse (2026-09-04, mac-munir, eingeloggt im Browser-Pane)
+## 9. Survey ueber 65 Kurse eines Studierenden-Accounts (2026-09-04)
 
-Skript im StudOn-Tab: Mitgliedschaftsuebersicht → jeden Kurs bis Tiefe 3 rekursiv gelesen (368 Requests).
+Skript im eingeloggten Browser: Mitgliedschaftsuebersicht → jeden Kurs bis Tiefe 3 rekursiv gelesen (368 Requests).
 
 **Layouts:** 2 672 Legacy-Listenzeilen (`.ilCLI > .ilContainerListItemOuter`), nur 31 ILIAS-9-Items
 (`.il-std-item`), 20 Kacheln (`.il-card`). Der Legacy-Pfad ist also der Normalfall, nicht der Fallback.

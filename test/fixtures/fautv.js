@@ -7,7 +7,7 @@ export const CLIP_ID = '42516';
 export const CLIP_URL = `https://www.fau.tv/clip/id/${CLIP_ID}`;
 export const FINAL_URL = 'https://www.fau.tv/series/human-computer-interaction-hci-s22/9-human-computer-interaction-hci-evaluation-1-s22';
 export const UPDATE_URL = 'https://www.fau.tv/livewire-61f7c42d/update';
-export const CSRF = 'vQboOovSX0hjTESTTOKEN';
+export const CSRF = 'FIXTURE-CSRF-TOKEN-0000';
 export const TITLE = '9 - Human Computer Interaction (HCI) - Evaluation 1';
 
 export const SNAPSHOT = JSON.stringify({

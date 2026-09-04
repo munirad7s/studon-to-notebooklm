@@ -19,4 +19,4 @@ Auslöser auf der Kursseite: ein `div.btn-group > button.btn.btn-default` **vor*
 `#il_head_action #tttt` – im Light DOM, damit das Seiten-CSS greift und der Button exakt wie das Original
 aussieht. Ohne diesen Bereich (z. B. Lernmodul-Ansicht) fällt der Auslöser auf einen schwebenden Button zurück.
 
-Das frühere Linear-Theme (`docs/design-system-linear.md`) ist damit abgelöst.
+Das frühere dunkle Linear-Theme der 2.0-Vorabversion ist damit abgelöst.

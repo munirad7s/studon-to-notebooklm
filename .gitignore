@@ -4,3 +4,8 @@
 node_modules/
 dist/
 .keys/
+
+# Betriebssystem/Editor
+.idea/
+.vscode/
+Thumbs.db
