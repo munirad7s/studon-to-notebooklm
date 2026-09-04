@@ -1,15 +1,34 @@
 /**
- * StudOn content script: floating badge that opens the exporter for the
- * course / folder / object currently shown.
+ * StudOn content script.
+ *
+ * Zeigt den ⚡-Badge und einen kleinen Dialog direkt auf der Kursseite:
+ * Was exportieren, in welches Notebook, los. Der Dialog sammelt nur die
+ * Entscheidung – die Arbeit macht der Export-Tab, der mit den gewählten
+ * Parametern geöffnet wird und sofort startet.
+ *
+ * Alles lebt in einem Shadow DOM, damit ILIAS-CSS und unser Design sich
+ * nicht in die Quere kommen.
  */
 (function studonToNotebookLM() {
   if (window.top !== window) return;
-  if (document.getElementById('s2n-badge')) return;
+  if (document.getElementById('s2n-host')) return;
 
   const TYPE_LABELS = {
     crs: 'Kurs', fold: 'Ordner', grp: 'Gruppe', sess: 'Sitzung', lm: 'Lernmodul', exc: 'Übung', copa: 'Inhaltsseite',
     wiki: 'Wiki', frm: 'Forum', mcst: 'Mediacast', webr: 'Weblinks', glo: 'Glossar', cat: 'Kategorie', file: 'Datei',
   };
+
+  /** Chips im Dialog → Scan-Optionen des Exporters (lib/storage.js DEFAULT_SETTINGS.scan). */
+  const CHIPS = [
+    { label: 'Dateien', opts: ['files'] },
+    { label: 'Lernmodule', opts: ['learningModules'] },
+    { label: 'Übungen & Sitzungen', opts: ['exercises', 'sessions'] },
+    { label: 'Seiten & Glossare', opts: ['pages', 'wiki', 'glossary', 'courseInfo'] },
+    { label: 'Links & Videos', opts: ['weblinks', 'fauTv', 'media'] },
+  ];
+  const CHIP_OPTS = new Set(CHIPS.flatMap((c) => c.opts));
+
+  /* ---------- Objekt erkennen ---------- */
 
   function parseLink(href) {
     if (!href) return null;
@@ -55,8 +74,15 @@
   }
 
   function detectTitle() {
-    const h = document.querySelector('.il-page-content-header h1, .il-page-content-header, h1.ilHeader, .ilHeader h1, #il_center_col h1');
-    let title = h ? h.textContent.trim() : '';
+    // Erst echte Ueberschriften; der Kopf-Container enthaelt sonst auch "Aktionen" und unseren Button.
+    const h = document.querySelector('.il-page-content-header h1, #il_mhead_t_focus, h1.ilHeader, .ilHeader h1, #il_center_col h1')
+      || document.querySelector('.il-page-content-header');
+    let title = '';
+    if (h) {
+      const clone = h.cloneNode(true);
+      for (const el of clone.querySelectorAll('#il_head_action, .ilHeadAction, #s2n-trigger, .btn-group')) el.remove();
+      title = clone.textContent.trim();
+    }
     if (!title) title = document.title.replace(/\s*[:\-–]\s*StudOn\s*$/i, '').replace(/^Inhalt\s*[:\-–]\s*/i, '').trim();
     return title.replace(/\s+/g, ' ');
   }
@@ -66,57 +92,285 @@
   const title = detectTitle();
   const label = TYPE_LABELS[obj.type] || 'Objekt';
 
-  const badge = document.createElement('div');
-  badge.id = 's2n-badge';
-  badge.innerHTML = `
-    <button type="button" class="s2n-main" title="Diesen ${label} nach NotebookLM exportieren">
-      <span class="s2n-icon">⚡</span><span class="s2n-text">NotebookLM</span>
+  /* ---------- Shadow DOM ---------- */
+
+  const host = document.createElement('div');
+  host.id = 's2n-host';
+  const root = host.attachShadow({ mode: 'open' });
+  const ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H4.5A1.5 1.5 0 0 1 3 12V2.5z"/><path d="M3 12a1.5 1.5 0 0 1 1.5-1.5H12"/><path d="M6 5.5h3.5M6 8h3.5"/></svg>';
+  root.innerHTML = `
+    <link rel="stylesheet" href="${chrome.runtime.getURL('content/content.css')}">
+    <button type="button" class="badge" id="badge" title="${label} nach NotebookLM exportieren" hidden>
+      ${ICON}<span>NotebookLM</span>
     </button>
-    <div class="s2n-panel" hidden>
-      <div class="s2n-panel-title">${label}: <b></b></div>
-      <div class="s2n-panel-meta">Noch nicht exportiert</div>
-      <div class="s2n-panel-actions">
-        <button type="button" class="s2n-btn s2n-primary" data-action="export">Export öffnen</button>
-        <button type="button" class="s2n-btn" data-action="options">Optionen</button>
+
+    <div class="backdrop" id="backdrop" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+        <header>
+          <div class="eyebrow">${ICON} Export nach NotebookLM</div>
+          <button type="button" class="close" id="close" aria-label="Schließen">×</button>
+          <h1 id="dlg-title"></h1>
+          <div class="meta" id="meta"></div>
+        </header>
+
+        <section>
+          <div class="section-label">Inhalt</div>
+          <div class="chips" id="chips"></div>
+        </section>
+
+        <section>
+          <div class="section-label">Notebook</div>
+          <div class="segment" role="radiogroup">
+            <button type="button" class="seg" data-mode="new" aria-checked="true">Neu anlegen</button>
+            <button type="button" class="seg" data-mode="existing" aria-checked="false">Vorhandenes</button>
+          </div>
+          <input type="text" id="nb-title" class="field" placeholder="Titel des Notebooks" spellcheck="false">
+          <div class="select-wrap" id="nb-existing-wrap" hidden>
+            <select id="nb-existing" class="field"><option value="">Lade Notebooks …</option></select>
+          </div>
+          <div class="hint" id="nb-hint"></div>
+        </section>
+
+        <footer>
+          <div class="status" id="status"><span class="dot"></span><span id="status-text">NotebookLM wird geprüft …</span></div>
+          <div class="actions">
+            <button type="button" class="ghost" id="more">Mehr Einstellungen <span class="arrow">↗</span></button>
+            <button type="button" class="primary" id="go">Exportieren</button>
+          </div>
+        </footer>
       </div>
     </div>`;
-  badge.querySelector('.s2n-panel-title b').textContent = title || obj.refId;
-  document.body.appendChild(badge);
+  document.body.appendChild(host);
 
-  const panel = badge.querySelector('.s2n-panel');
-  const meta = badge.querySelector('.s2n-panel-meta');
+  const $ = (id) => root.getElementById(id);
+  const backdrop = $('backdrop');
+  const state = {
+    mode: 'new',
+    scan: {},            // vollständige Scan-Optionen (aus Einstellungen, von Chips überschrieben)
+    notebooks: [],
+    nlmOk: null,
+    lastNotebookId: null,
+    lastNotebookTitle: '',
+  };
 
-  function refreshMeta() {
-    try {
-      chrome.storage.local.get(`course:${obj.refId}`, (data) => {
-        const state = data && data[`course:${obj.refId}`];
-        if (!state || !state.lastRun) { meta.textContent = 'Noch nicht exportiert'; return; }
-        const n = Object.keys(state.items || {}).length;
-        const when = new Date(state.lastRun).toLocaleString('de-DE');
-        meta.textContent = `Zuletzt: ${when} · ${n} Objekte · ${state.notebooks.length} Notebook${state.notebooks.length === 1 ? '' : 's'}`;
+  $('dlg-title').textContent = title || `StudOn ${obj.refId}`;
+  $('meta').textContent = `${label} · ref ${obj.refId}`;
+  $('nb-title').value = title;
+
+  /* ---------- Chips ---------- */
+
+  function renderChips() {
+    const wrap = $('chips');
+    wrap.innerHTML = '';
+    for (const chip of CHIPS) {
+      const on = chip.opts.some((o) => state.scan[o]);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.innerHTML = `<span class="tick">✓</span>${chip.label}`;
+      b.addEventListener('click', () => {
+        const next = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', next ? 'true' : 'false');
+        for (const o of chip.opts) state.scan[o] = next;
+        updateGo();
       });
-    } catch {
-      meta.textContent = '';
+      wrap.appendChild(b);
     }
   }
 
-  function openExporter() {
-    chrome.runtime.sendMessage({ type: 'open-exporter', ref: obj.refId, type: obj.type || '', title, url: location.href }, (res) => {
-      if (chrome.runtime.lastError || !res || !res.ok) {
-        window.open(chrome.runtime.getURL(`export/export.html?ref=${obj.refId}&type=${obj.type || ''}&title=${encodeURIComponent(title)}&url=${encodeURIComponent(location.href)}`), '_blank');
-      }
+  function enabledScanKeys() {
+    return Object.entries(state.scan).filter(([, v]) => v).map(([k]) => k);
+  }
+
+  /* ---------- Notebook-Wahl ---------- */
+
+  function setMode(mode) {
+    state.mode = mode;
+    for (const b of root.querySelectorAll('.seg')) b.setAttribute('aria-checked', b.dataset.mode === mode ? 'true' : 'false');
+    $('nb-title').hidden = mode !== 'new';
+    $('nb-existing-wrap').hidden = mode !== 'existing';
+    const hint = $('nb-hint');
+    if (mode === 'existing' && state.lastNotebookId) {
+      hint.textContent = `Zuletzt für diesen ${label} verwendet – nur Neues wird ergänzt.`;
+    } else if (mode === 'existing') {
+      hint.textContent = 'Bereits vorhandene Quellen bleiben unberührt.';
+    } else {
+      hint.textContent = '';
+    }
+    updateGo();
+  }
+
+  function renderNotebooks() {
+    const sel = $('nb-existing');
+    sel.innerHTML = '';
+    if (!state.notebooks.length) {
+      sel.innerHTML = '<option value="">Keine eigenen Notebooks gefunden</option>';
+      return;
+    }
+    for (const nb of state.notebooks) {
+      const o = document.createElement('option');
+      o.value = nb.id;
+      o.textContent = `${nb.emoji ? `${nb.emoji} ` : ''}${nb.title} · ${nb.sourceCount} Quellen`;
+      sel.appendChild(o);
+    }
+    if (state.lastNotebookId && state.notebooks.some((n) => n.id === state.lastNotebookId)) sel.value = state.lastNotebookId;
+  }
+
+  function setStatus(kind, text) {
+    const dot = $('status').querySelector('.dot');
+    dot.className = `dot ${kind}`;
+    $('status-text').textContent = text;
+  }
+
+  function updateGo() {
+    const nothing = enabledScanKeys().filter((k) => CHIP_OPTS.has(k)).length === 0;
+    const needsNotebook = state.mode === 'existing' && !$('nb-existing').value;
+    $('go').disabled = nothing || needsNotebook || state.nlmOk === false;
+  }
+
+  /* ---------- Daten laden ---------- */
+
+  function storageGet(keys) {
+    return new Promise((resolve) => {
+      try { chrome.storage.local.get(keys, (data) => resolve(data || {})); } catch { resolve({}); }
     });
   }
 
-  badge.querySelector('.s2n-main').addEventListener('click', () => {
-    const open = panel.hasAttribute('hidden');
-    if (open) { refreshMeta(); panel.removeAttribute('hidden'); } else panel.setAttribute('hidden', '');
+  function send(message) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(message, (res) => resolve(chrome.runtime.lastError ? null : res));
+      } catch { resolve(null); }
+    });
+  }
+
+  async function load() {
+    const data = await storageGet(['settings', `course:${obj.refId}`]);
+    const scanDefaults = {
+      files: true, learningModules: true, pages: true, wiki: true, glossary: true, exercises: true,
+      sessions: true, forum: false, media: true, weblinks: true, fauTv: true, courseInfo: true,
+    };
+    state.scan = { ...scanDefaults, ...((data.settings && data.settings.scan) || {}) };
+    renderChips();
+
+    const course = data[`course:${obj.refId}`];
+    if (course && course.primaryNotebookId) {
+      state.lastNotebookId = course.primaryNotebookId;
+      const nb = (course.notebooks || []).find((n) => n.id === course.primaryNotebookId);
+      state.lastNotebookTitle = nb ? nb.title : '';
+      const n = Object.keys(course.items || {}).length;
+      $('meta').textContent = `${label} · ref ${obj.refId} · ${n} Objekte bereits in NotebookLM`;
+    }
+    // Neu ist der Normalfall; wurde der Kurs schon exportiert, ist das alte Notebook der bessere Default.
+    setMode(state.lastNotebookId ? 'existing' : 'new');
+
+    const res = await send({ type: 'list-notebooks' });
+    if (res && res.ok) {
+      state.nlmOk = true;
+      state.notebooks = res.notebooks || [];
+      renderNotebooks();
+      setStatus('ok', res.email ? `NotebookLM · ${res.email}` : 'NotebookLM verbunden');
+    } else {
+      state.nlmOk = false;
+      $('nb-existing').innerHTML = '<option value="">Nicht verfügbar</option>';
+      const loggedOut = !res || res.notLoggedIn;
+      setStatus('err', loggedOut ? 'Nicht bei NotebookLM angemeldet' : `NotebookLM: ${res.error}`);
+      if (loggedOut) {
+        const a = document.createElement('a');
+        a.href = 'https://notebooklm.google.com/';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'Anmelden ↗';
+        $('status').appendChild(a);
+      }
+    }
+    updateGo();
+  }
+
+  /* ---------- Öffnen / Schließen ---------- */
+
+  let loaded = false;
+  function open() {
+    backdrop.hidden = false;
+    // Timer statt requestAnimationFrame: laeuft auch in Hintergrund-Tabs zuverlaessig an.
+    setTimeout(() => backdrop.classList.add('in'), 10);
+    if (!loaded) { loaded = true; load(); }
+    setTimeout(() => { if (state.mode === 'new') $('nb-title').select(); }, 50);
+  }
+  function close() {
+    backdrop.classList.remove('in');
+    setTimeout(() => { backdrop.hidden = true; }, 160);
+  }
+
+  // Auslöser: als StudOn-Button neben "Aktionen" im Kopfbereich (erbt das Seiten-CSS,
+  // sieht also exakt aus wie das Original); nur ohne diesen Bereich schwebt ein Ersatz-Button.
+  function mountTrigger() {
+    const actions = document.querySelector('#il_head_action #tttt') || document.getElementById('il_head_action');
+    if (!actions) return false;
+    const group = document.createElement('div');
+    group.className = 'btn-group';
+    group.id = 's2n-trigger';
+    group.style.marginRight = '6px';
+    group.innerHTML = `<button type="button" class="btn btn-default" title="${label} nach NotebookLM exportieren">${ICON.replace('<svg ', '<svg style="width:13px;height:13px;vertical-align:-2px;margin-right:4px" ')}<span class="hidden-xs">NotebookLM</span></button>`;
+    const firstGroup = actions.querySelector('.btn-group');
+    if (firstGroup) actions.insertBefore(group, firstGroup);
+    else actions.appendChild(group);
+    group.querySelector('button').addEventListener('click', open);
+    return true;
+  }
+  if (!mountTrigger()) $('badge').hidden = false;
+
+  $('badge').addEventListener('click', open);
+  $('close').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  root.addEventListener('keydown', (e) => {
+    if (backdrop.hidden) return;
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    if (e.key === 'Enter' && e.target === $('nb-title')) { e.preventDefault(); launch(true); }
   });
-  badge.querySelector('[data-action="export"]').addEventListener('click', openExporter);
-  badge.querySelector('[data-action="options"]').addEventListener('click', () => {
-    chrome.runtime.sendMessage({ type: 'open-url', url: chrome.runtime.getURL('options/options.html') });
-  });
-  document.addEventListener('click', (e) => {
-    if (!badge.contains(e.target)) panel.setAttribute('hidden', '');
-  });
+  for (const b of root.querySelectorAll('.seg')) b.addEventListener('click', () => setMode(b.dataset.mode));
+  $('nb-existing').addEventListener('change', updateGo);
+  $('nb-title').addEventListener('input', updateGo);
+  $('go').addEventListener('click', () => launch(true));
+  $('more').addEventListener('click', () => launch(false));
+
+  /* ---------- Export-Tab starten ---------- */
+
+  function launchParams() {
+    const params = {
+      type: 'open-exporter',
+      ref: obj.refId,
+      type_: obj.type || '',
+      title,
+      url: location.href,
+      scan: enabledScanKeys().join(','),
+      mode: state.mode,
+    };
+    if (state.mode === 'existing') {
+      params.notebook = $('nb-existing').value;
+      const nb = state.notebooks.find((n) => n.id === params.notebook);
+      params.nbtitle = nb ? nb.title : state.lastNotebookTitle;
+    } else {
+      params.nbtitle = $('nb-title').value.trim() || title;
+    }
+    return params;
+  }
+
+  async function launch(autostart) {
+    const go = $('go');
+    go.disabled = true;
+    go.textContent = autostart ? 'Öffne Export …' : 'Exportieren';
+    const params = { ...launchParams(), autostart: autostart ? '1' : '' };
+    // Der Objekttyp heisst in der Nachricht "objType", damit er nicht mit dem Nachrichtentyp kollidiert.
+    params.objType = params.type_;
+    delete params.type_;
+    const res = await send(params);
+    if (!res || !res.ok) {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) if (k !== 'type' && v) q.set(k === 'objType' ? 'type' : k, v);
+      window.open(chrome.runtime.getURL(`export/export.html?${q.toString()}`), '_blank');
+    }
+    setTimeout(() => { go.textContent = 'Exportieren'; updateGo(); close(); }, 400);
+  }
 })();

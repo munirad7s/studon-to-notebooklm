@@ -1,98 +1,278 @@
-#s2n-badge {
+/*
+ * Dialog im Shadow DOM auf StudOn-Seiten - im StudOn-Design (studon9skin):
+ * FAU-Blau #04316a, eckige Buttons/Felder, Panels mit #ddd-Rahmen, Roboto-StudOn.
+ * Die Schriftart kommt aus dem Dokument (@font-face gilt auch im Shadow DOM).
+ */
+
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  --bg: #ffffff;
+  --bg-2: #f9f9f9;
+  --surface-2: #f3f3f3;
+  --text: #161616;
+  --text-2: #2c2c2c;
+  --text-3: #6f6f6f;
+  --text-4: #8c8c8c;
+  --accent: #04316a;
+  --accent-hover: #1a4a85;
+  --accent-2: #4c6586;
+  --green: #1e7f3a;
+  --red: #a94442;
+  --border: #dddddd;
+  --border-strong: #2c2c2c;
+  --input-border: #757575;
+  --font: "Roboto-StudOn", Roboto, Verdana, Arial, Helvetica, sans-serif;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+
+button, input, select { font: inherit; }
+
+/* ---------- Schwebender Ersatz-Button (nur, wenn StudOn keinen "Aktionen"-Bereich hat) ---------- */
+
+.badge {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 2147483000;
-  font-family: "Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
-  color: #f7f8f8;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 0;
+  border: 1px solid var(--accent-2);
+  background: var(--accent-2);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
+.badge:hover { background: var(--accent); border-color: var(--accent); }
+.badge svg { width: 14px; height: 14px; stroke: #fff; }
 
-#s2n-badge .s2n-main {
+/* ---------- Dialog ---------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(22, 22, 22, 0.45);
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.backdrop[hidden] { display: none; }
+.backdrop.in { opacity: 1; }
+
+.dialog {
+  width: 440px;
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  transform: translateY(6px);
+  transition: transform 0.16s ease;
+}
+.backdrop.in .dialog { transform: none; }
+
+header {
+  position: relative;
+  padding: 12px 16px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.eyebrow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #191a1b;
-  color: #f7f8f8;
-  font-weight: 510;
-  cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
 }
-
-#s2n-badge .s2n-main:hover {
-  transform: translateY(-1px);
-  border-color: #7170ff;
+.eyebrow svg { width: 14px; height: 14px; stroke: var(--accent); }
+h1 {
+  margin: 4px 0 0;
+  padding-right: 28px;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--text-2);
 }
-
-#s2n-badge .s2n-icon {
-  color: #7170ff;
-}
-
-#s2n-badge .s2n-panel {
+.meta { font-size: 12px; line-height: 16px; color: var(--text-3); margin-top: 2px; }
+.close {
   position: absolute;
-  right: 0;
-  bottom: 52px;
-  width: 300px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #0f1011;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-}
-
-#s2n-badge .s2n-panel[hidden] {
-  display: none;
-}
-
-#s2n-badge .s2n-panel-title {
-  font-size: 13px;
-  color: #d0d6e0;
-  margin-bottom: 4px;
-  line-height: 1.4;
-}
-
-#s2n-badge .s2n-panel-title b {
-  color: #f7f8f8;
-  font-weight: 590;
-}
-
-#s2n-badge .s2n-panel-meta {
-  font-size: 12px;
-  color: #8a8f98;
-  margin-bottom: 12px;
-}
-
-#s2n-badge .s2n-panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-#s2n-badge .s2n-btn {
-  flex: 1;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: #d0d6e0;
-  font-size: 12px;
-  font-weight: 510;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 20px;
+  line-height: 1;
   cursor: pointer;
 }
+.close:hover { color: var(--text); background: var(--surface-2); }
 
-#s2n-badge .s2n-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+section { padding: 12px 16px 0; }
+.section-label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 8px;
 }
 
-#s2n-badge .s2n-primary {
-  background: #5e6ad2;
-  border-color: #5e6ad2;
+/* Chips: eckige Auswahl-Tags, aktiv in hellem FAU-Blau */
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 0;
+  border: 1px solid var(--input-border);
+  background: #fff;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.chip:hover { background: var(--surface-2); }
+.chip .tick {
+  width: 13px;
+  height: 13px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  line-height: 1;
+  color: transparent;
+  border: 1px solid var(--input-border);
+  background: #fff;
+}
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #e8eef6;
+  color: var(--accent);
+}
+.chip[aria-pressed="true"] .tick { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Segment: wie StudOn-Reiter (aktiv FAU-Blau mit weisser Schrift) */
+
+.segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 10px;
+}
+.seg {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.seg:hover { background: var(--surface-2); }
+.seg[aria-checked="true"] { background: var(--accent); color: #fff; }
+
+/* Felder */
+
+.field {
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 0;
+  border: 1px solid var(--input-border);
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+}
+.field:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(4, 49, 106, 0.15); }
+.field[hidden] { display: none; }
+.select-wrap[hidden] { display: none; }
+select.field { cursor: pointer; height: 28px; }
+.hint { min-height: 16px; margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--text-3); }
+
+/* Fuss */
+
+footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 16px 14px;
+  margin-top: 4px;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+.status a { color: var(--accent-2); text-decoration: none; margin-left: 2px; }
+.status a:hover { text-decoration: underline; }
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-4);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.dot.ok { background: var(--green); animation: none; }
+.dot.err { background: var(--red); animation: none; }
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ghost {
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-2);
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.ghost:hover { text-decoration: underline; }
+.ghost .arrow { font-size: 11px; margin-left: 1px; }
+.primary {
+  padding: 5px 14px;
+  border-radius: 0;
+  border: 1px solid var(--accent);
+  background: var(--accent);
   color: #fff;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
 }
+.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-#s2n-badge .s2n-primary:hover {
-  background: #7170ff;
+::selection { background: rgba(4, 49, 106, 0.2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .dialog { transition: none; }
+  .dot { animation: none; }
 }

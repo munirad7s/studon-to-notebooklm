@@ -179,3 +179,66 @@ test('Exporter uses Drive as source when configured', async () => {
   assert.ok(nlm.calls.some((c) => c[0] === 'drive-source' && c[2] === 'doc-1'));
   assert.equal(state.items[fileJob.key].driveFileId, 'doc-1');
 });
+
+/* ---------- Videos als Tonspur ---------- */
+
+function videoTree({ sizeBytes, ext = 'mp4' }) {
+  return {
+    id: 'root', kind: 'container', title: 'Aufzeichnungen', children: [
+      { id: 'v1', kind: 'file', type: 'file', refId: null, title: `Vorlesung_10.06.${ext}`, filename: `Vorlesung_10.06.${ext}`, downloadUrl: 'https://studon/video.mp4', sizeBytes, sizeText: `${Math.round(sizeBytes / 1048576)} MB`, path: ['Aufzeichnungen'], children: [], errors: [] },
+    ], errors: [],
+  };
+}
+
+test('planExport: grosse MP4s werden zur Tonspur statt uebersprungen, andere Riesen-Dateien nicht', () => {
+  const big = planExport({ tree: videoTree({ sizeBytes: 273160896 }), settings: { overviewSource: false } });
+  assert.equal(big.jobs.length, 1);
+  assert.equal(big.jobs[0].action, 'audio');
+  assert.equal(big.counts.audio, 1);
+
+  const bigPdf = planExport({ tree: videoTree({ sizeBytes: 273160896, ext: 'pdf' }), settings: { overviewSource: false } });
+  assert.equal(bigPdf.jobs.length, 0);
+  assert.equal(bigPdf.skipped[0].reason, 'größer als 200 MB');
+
+  const small = planExport({ tree: videoTree({ sizeBytes: 50 * 1048576 }), settings: { videoAsAudio: false, overviewSource: false } });
+  assert.equal(small.jobs[0].action, 'direct', 'kleines Video ohne videoAsAudio bleibt Video');
+  const smallDefault = planExport({ tree: videoTree({ sizeBytes: 50 * 1048576 }), settings: { overviewSource: false } });
+  assert.equal(smallDefault.jobs[0].action, 'audio', 'Standard: auch kleine Videos als Tonspur');
+});
+
+test('Exporter loest die Tonspur heraus und laedt eine .m4a hoch', async () => {
+  const tree = videoTree({ sizeBytes: 273160896 });
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const nlm = fakeNlm();
+  const extracted = [];
+  const exporter = new Exporter({
+    nlm,
+    fetch: fileFetch({ 'https://studon/video.mp4': { name: 'Vorlesung_10.06.mp4', blob: new Blob(['mp4bytes'], { type: 'video/mp4' }), headers: { 'content-type': 'video/mp4', 'content-disposition': 'attachment; filename="Vorlesung_10.06.mp4"' } } }),
+    extractAudio: async (blob) => { extracted.push(blob.size); return { blob: new Blob(['aac'], { type: 'audio/mp4' }), info: { durationSeconds: 4980 } }; },
+    settings: { delayMs: 0, videoAsAudio: true },
+    state: { refId: 'x', notebooks: [], primaryNotebookId: null, items: {} },
+    persist: async () => {}, sleep: async () => {},
+  });
+  const result = await exporter.run({ tree, plan, target: { mode: 'new', title: 'Video' }, courseUrl: 'https://studon/crs' });
+  assert.equal(result.errors.length, 0, JSON.stringify(result.errors));
+  assert.equal(extracted.length, 1, 'Tonspur einmal extrahiert');
+  const upload = nlm.calls.find((c) => c[0] === 'upload');
+  assert.equal(upload[2], 'Vorlesung_10.06.m4a');
+});
+
+test('Exporter ohne Extraktor meldet einen klaren Fehler statt 261 MB hochzuladen', async () => {
+  const tree = videoTree({ sizeBytes: 273160896 });
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const nlm = fakeNlm();
+  const exporter = new Exporter({
+    nlm,
+    fetch: fileFetch({ 'https://studon/video.mp4': { name: 'Vorlesung_10.06.mp4', blob: new Blob(['x']) } }),
+    settings: { delayMs: 0 },
+    state: { refId: 'x', notebooks: [], primaryNotebookId: null, items: {} },
+    persist: async () => {}, sleep: async () => {},
+  });
+  const result = await exporter.run({ tree, plan, target: { mode: 'new', title: 'Video' }, courseUrl: '' });
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].error || JSON.stringify(result.errors[0]), /Tonspur-Extraktion nicht verfügbar/);
+  assert.equal(nlm.calls.some((c) => c[0] === 'upload'), false);
+});

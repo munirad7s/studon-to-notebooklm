@@ -2,6 +2,7 @@ import { StudOnCrawler, SessionExpiredError, flatten } from '../lib/crawler.js';
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { DriveClient, buildAuthUrl, parseTokenFromRedirect } from '../lib/drive-client.js';
 import { planExport, Exporter, itemKey } from '../lib/exporter.js';
+import { extractAudioBlob } from '../lib/audio-extract.js';
 import { getSettings, saveSettings, getCourseState, saveCourseState } from '../lib/storage.js';
 import { typeLabel, formatBytes, gotoUrl, repoUrl } from '../lib/ilias.js';
 
@@ -12,6 +13,15 @@ const course = {
   type: params.get('type') || '',
   title: params.get('title') || '',
   url: params.get('url') || '',
+};
+
+/** Startparameter aus dem Dialog auf der StudOn-Seite (content/content.js). */
+const launch = {
+  autostart: params.get('autostart') === '1',
+  mode: params.get('mode') || '',                      // new | existing
+  notebookId: params.get('notebook') || '',
+  notebookTitle: params.get('nbtitle') || '',
+  scan: params.has('scan') ? new Set(params.get('scan').split(',').filter(Boolean)) : null,
 };
 
 const ui = {
@@ -79,11 +89,14 @@ async function init() {
 
   for (const input of document.querySelectorAll('#scan-toggles input')) {
     const opt = input.dataset.opt;
-    if (opt in ui.settings.scan) input.checked = !!ui.settings.scan[opt];
+    if (launch.scan) input.checked = launch.scan.has(opt);
+    else if (opt in ui.settings.scan) input.checked = !!ui.settings.scan[opt];
   }
+  if (launch.notebookTitle && launch.mode !== 'existing') $('target-title').value = launch.notebookTitle;
   $('opt-overview').checked = ui.settings.export.overviewSource !== false;
   $('opt-wait').checked = ui.settings.export.waitForProcessing !== false;
   $('opt-zip').checked = !!ui.settings.export.zip;
+  $('opt-video-audio').checked = ui.settings.export.videoAsAudio !== false;
   $('opt-drive-mirror').checked = !!ui.settings.export.driveMirror;
   $('opt-drive-source').checked = !!ui.settings.export.driveAsSource;
   if (!ui.settings.driveClientId) {
@@ -100,7 +113,40 @@ async function init() {
     $('target-auto').disabled = true;
   }
 
-  connectNotebookLM();
+  const connected = connectNotebookLM();
+  if (launch.mode || launch.autostart) await applyLaunch(connected);
+}
+
+/**
+ * Setzt Notebook-Wahl aus dem Dialog um und startet auf Wunsch sofort
+ * Scan und Export - ohne weiteren Klick.
+ */
+async function applyLaunch(connected) {
+  await connected;
+  if (launch.mode === 'existing' && launch.notebookId) {
+    const sel = $('target-existing');
+    if ([...sel.options].some((o) => o.value === launch.notebookId)) {
+      sel.value = launch.notebookId;
+      document.querySelector('input[name="target"][value="existing"]').checked = true;
+    } else if (ui.courseState.primaryNotebookId === launch.notebookId && !$('target-auto').disabled) {
+      $('target-auto').checked = true;
+    } else {
+      banner('Das gewählte Notebook wurde nicht gefunden - es wird ein neues angelegt.', 'info');
+      document.querySelector('input[name="target"][value="new"]').checked = true;
+    }
+  } else if (launch.mode === 'new') {
+    document.querySelector('input[name="target"][value="new"]').checked = true;
+  }
+
+  if (!launch.autostart) return;
+  if (!ui.nlm || !ui.nlm.at) return; // Banner mit Login-Hinweis steht bereits.
+  await runScan();
+  if (ui.state !== 'scanned') return;
+  if (!ui.plan || !ui.plan.jobs.length) {
+    banner('Nichts zu exportieren - alles ist bereits in NotebookLM oder abgewählt.', 'info');
+    return;
+  }
+  await runExport();
 }
 
 async function connectNotebookLM() {
@@ -337,6 +383,7 @@ function exportSettingsFromUi() {
     overviewSource: $('opt-overview').checked,
     waitForProcessing: $('opt-wait').checked,
     zip: $('opt-zip').checked,
+    videoAsAudio: $('opt-video-audio').checked,
     driveMirror: $('opt-drive-mirror').checked && !!ui.settings.driveClientId,
     driveAsSource: $('opt-drive-source').checked && !!ui.settings.driveClientId,
     driveRootFolder: ui.settings.driveRootFolder,
@@ -351,7 +398,7 @@ function updatePlanSummary() {
   const skippedReasons = {};
   for (const s of ui.plan.skipped) skippedReasons[s.reason] = (skippedReasons[s.reason] || 0) + 1;
   const reasons = Object.entries(skippedReasons).map(([r, n]) => `${n}× ${r}`).join(', ');
-  $('plan-summary').textContent = `Geplant: ${c.files} Dateien, ${c.texts} Texte, ${c.links} Links${settings.overviewSource ? ', 1 Kursstruktur' : ''}` + (reasons ? ` · übersprungen: ${reasons}` : '');
+  $('plan-summary').textContent = `Geplant: ${c.files} Dateien${c.audio ? ` (davon ${c.audio} Videos als Tonspur)` : ''}, ${c.texts} Texte, ${c.links} Links${settings.overviewSource ? ', 1 Kursstruktur' : ''}` + (reasons ? ` · übersprungen: ${reasons}` : '');
   $('btn-export').disabled = ui.plan.jobs.length === 0 || !ui.nlm || !ui.nlm.at || ui.state === 'exporting';
 }
 
@@ -387,7 +434,7 @@ async function runExport() {
   for (const [, entry] of ui.nodes) { entry.status.hidden = true; entry.status.className = 'badge'; }
 
   const settings = exportSettingsFromUi();
-  await saveSettings({ export: { overviewSource: settings.overviewSource, waitForProcessing: settings.waitForProcessing, zip: settings.zip, driveMirror: settings.driveMirror, driveAsSource: settings.driveAsSource } });
+  await saveSettings({ export: { overviewSource: settings.overviewSource, waitForProcessing: settings.waitForProcessing, zip: settings.zip, videoAsAudio: settings.videoAsAudio, driveMirror: settings.driveMirror, driveAsSource: settings.driveAsSource } });
 
   const mode = document.querySelector('input[name="target"]:checked').value;
   const target = { mode, title: $('target-title').value.trim() || ui.tree.title };
@@ -420,6 +467,7 @@ async function runExport() {
     drive: ui.drive,
     fetch: (u, i) => fetch(u, i),
     JSZip: window.JSZip,
+    extractAudio: extractAudioBlob,
     settings: { ...settings, delayMs: 350 },
     state: ui.courseState,
     persist: (s) => saveCourseState(s),

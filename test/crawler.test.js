@@ -119,3 +119,146 @@ test('treeToOverview renders the structure as markdown', async () => {
   assert.match(md, /- 📁 Übungsblätter \(Abschnitt: Übungen\)\n  - 📄 Blatt_01.pdf \(226,41 KB\)/);
   assert.match(md, /⏭ Probeklausur/);
 });
+
+test('collectItems reads tile decks and legacy rows on the same page (HCI course, ref 6748584)', () => {
+  const doc = new DOMParser().parseFromString(fx.mixedPage, 'text/html');
+  const items = collectItems(doc);
+  assert.equal(items.length, 7, 'legacy rows and cards are both collected');
+
+  const analysis = items.find((i) => i.refId === '6815140');
+  assert.ok(analysis, 'card from the tile deck is found');
+  assert.equal(analysis.type, 'lm');
+  assert.equal(analysis.title, 'Analysis', 'title link wins over the empty image link');
+  assert.equal(analysis.section, 'Lecture Content');
+  assert.match(analysis.description, /June 2nd/);
+
+  const faq = items.find((i) => i.refId === '6815126');
+  assert.equal(faq.type, 'copa');
+  assert.equal(faq.title, 'FAQ HCI-Lecture and Exercise');
+  assert.equal(faq.section, "FAQ's and additive Informations");
+  assert.equal(faq.description, 'Frequently asked questions');
+
+  assert.equal(items.filter((i) => i.type === 'lm').length, 3);
+});
+
+/* ---------- fau.tv ---------- */
+
+import * as ftv from './fixtures/fautv.js';
+
+const LM_PAGE_102 = 'https://www.studon.fau.de/studon/ilias.php?baseClass=ilLMPresentationGUI&ref_id=6815119&obj_id=102';
+const FAUTV_LINK = '<p class="ilc_Paragraph ilc_text_block_Standard"><a class="ilc_link_ExtLink" rel="noopener" target="_blank" href="https://www.fau.tv/clip/id/42516">https://www.fau.tv/clip/id/42516</a></p>';
+
+function crawlerWithFauTv(fauTvOpts = {}, scanOpts = {}) {
+  const routes = { ...fx.routes(), [LM_PAGE_102]: fx.lmPage('Definitionen', FAUTV_LINK) };
+  const studon = fx.fakeFetch(routes);
+  const fautv = ftv.fakeFauTvFetch(fauTvOpts);
+  const fetch = (url, init) => (/fau\.tv/.test(url) ? fautv(url, init) : studon(url, init));
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, forum: false, ...scanOpts } });
+  return { c, fautv };
+}
+
+test('fau.tv-Link im Lernmodul wird zum Transkript-Text, nicht zum Link', async () => {
+  const { c, fautv } = crawlerWithFauTv();
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+
+  const transcript = lm.children.find((n) => n.kind === 'text' && /^Transkript – /.test(n.title));
+  assert.ok(transcript, 'Transkript-Knoten unter dem Lernmodul');
+  assert.equal(transcript.title, `Transkript – ${ftv.TITLE}`);
+  assert.equal(transcript.video, ftv.FINAL_URL);
+  assert.equal(transcript.segments, ftv.SEGMENTS.length);
+  assert.match(transcript.content, /\*\*\[00:00\]\*\* Dear students/);
+  assert.ok(transcript.words > 20);
+
+  assert.equal(lm.children.some((n) => n.kind === 'link' && /fau\.tv/.test(n.href)), false, 'kein Link-Knoten fuer fau.tv');
+  assert.equal(fautv.calls.filter((x) => x.init.method === 'POST').length, 1, 'ein Livewire-Aufruf pro Clip');
+});
+
+test('fau.tv ohne Transkript wird als Fehler am Knoten vermerkt, Scan laeuft weiter', async () => {
+  const { c } = crawlerWithFauTv({ withTranscript: false });
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+  assert.equal(lm.children.some((n) => /^Transkript – /.test(n.title || '')), false);
+  assert.ok(lm.errors.some((e) => /fau\.tv 42516/.test(e)), JSON.stringify(lm.errors));
+  assert.ok(lm.children.some((n) => n.kind === 'text'), 'Lernmodul-Text selbst ist trotzdem da');
+});
+
+test('Option fauTv=false laesst fau.tv-Links unangetastet', async () => {
+  const { c, fautv } = crawlerWithFauTv({}, { fauTv: false });
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+  assert.equal(lm.children.some((n) => /^Transkript – /.test(n.title || '')), false);
+  assert.equal(fautv.calls.length, 0, 'fau.tv wird nicht kontaktiert');
+});
+
+/* ---------- Video-Objekte, Legacy-Eigenschaften, News ---------- */
+
+test('Legacy-Zeilen: keine Dubletten, Endung/Groesse/Datum aus den Eigenschaften, News ignoriert', () => {
+  const doc = new DOMParser().parseFromString(fx.videoCoursePage, 'text/html');
+  const items = collectItems(doc);
+  assert.equal(items.length, 4, 'vier Objekte, kein News-Eintrag, keine Outer/Inner-Dublette');
+  assert.equal(items.filter((i) => !i.type).length, 0, 'jedes Objekt hat einen Typ (Icon der Outer-Zeile)');
+
+  const zip = items.find((i) => i.refId === '6148564');
+  assert.equal(zip.type, 'file');
+  assert.equal(zip.ext, 'zip');
+  assert.equal(zip.sizeText, '1,20 MB');
+  assert.equal(zip.modified, '12. Mär 2026, 10:05');
+
+  const pdf = items.find((i) => i.refId === '6148565');
+  assert.equal(pdf.ext, 'pdf');
+  assert.equal(pdf.modified, 'Gestern, 14:11');
+  assert.equal(items.find((i) => i.refId === fx.HTLM_REF).type, 'htlm');
+  assert.equal(items.find((i) => i.refId === fx.XVID_REF).type, 'xvid');
+});
+
+test('HTML-Lernmodul mit MP4 als Startdatei wird zur Videodatei mit Groesse - ohne den Body zu lesen', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const htlm = root.children.find((n) => n.refId === fx.HTLM_REF);
+  assert.ok(htlm, 'htlm-Knoten');
+  const video = htlm.children.find((n) => n.kind === 'file');
+  assert.ok(video, 'Videodatei unter dem Lernmodul');
+  assert.equal(video.filename, 'Vorlesung_Marketing_10.06.2026.mp4');
+  assert.equal(video.downloadUrl, fx.HTLM_VIDEO_URL);
+  assert.equal(video.sizeBytes, 273160896);
+  assert.equal(video.contentType, 'video/mp4');
+  assert.equal(htlm.errors.length, 0, JSON.stringify(htlm.errors));
+});
+
+test('Interaktives Video (xvid) liefert das eingebettete MP4 mit WAC-Token und die Beschreibung', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const xvid = root.children.find((n) => n.refId === fx.XVID_REF);
+  assert.ok(xvid, 'xvid-Knoten');
+  assert.equal(xvid.kind, 'container');
+  const video = xvid.children.find((n) => n.kind === 'file');
+  assert.ok(video, 'Videodatei');
+  assert.equal(video.downloadUrl, fx.XVID_VIDEO_URL);
+  assert.match(video.filename, /\.mp4$/);
+  assert.ok(xvid.children.some((n) => n.kind === 'text' && /^Video – /.test(n.title)), 'Beschreibung als Text');
+});
+
+test('Dateien ohne Endung im Titel bekommen die Endung aus den Eigenschaften', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const zip = root.children.find((n) => n.refId === '6148564');
+  assert.equal(zip.kind, 'file');
+  assert.equal(zip.filename, 'Cover Templates.zip');
+  assert.equal(zip.sizeBytes, Math.round(1.2 * 1024 * 1024));
+  const skipped = root.children.filter((n) => n.kind === 'skipped');
+  assert.equal(skipped.length, 0, 'keine "unbekannter Typ"-Knoten aus News oder Dubletten');
+});
+
+test('media=false laesst Videos aus HTML-Lernmodul und xvid aus', async () => {
+  const fetch = fx.videoFetch(fx.videoRoutes());
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, media: false } });
+  const root = await c.scan({ refId: fx.VIDEO_COURSE_REF, type: 'fold', title: 'Aufzeichnungen' });
+  const xvid = root.children.find((n) => n.refId === fx.XVID_REF);
+  assert.equal(xvid.kind, 'skipped');
+  const htlm = root.children.find((n) => n.refId === fx.HTLM_REF);
+  assert.ok(htlm.children.some((n) => n.kind === 'file'), 'htlm-Video bleibt (Lernmodul-Option), nur Plugin-Videos haengen an media');
+});

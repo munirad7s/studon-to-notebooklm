@@ -25,17 +25,38 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.studon.fau.de/studon/*"],
-      "js": ["content/content.js"],
-      "css": ["content/content.css"],
+      "matches": [
+        "https://www.studon.fau.de/studon/*"
+      ],
+      "js": [
+        "content/content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage", "downloads", "identity", "tabs", "unlimitedStorage"],
+  "permissions": [
+    "storage",
+    "downloads",
+    "identity",
+    "tabs",
+    "unlimitedStorage"
+  ],
   "host_permissions": [
     "https://www.studon.fau.de/*",
     "https://notebooklm.google.com/*",
     "https://notebook.google.com/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://www.fau.tv/*",
+    "https://fau.tv/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/content.css"
+      ],
+      "matches": [
+        "https://www.studon.fau.de/*"
+      ]
+    }
   ]
 }

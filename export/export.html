@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="bolt">⚡</span> StudOn → NotebookLM</div>
+    <div class="brand"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H4.5A1.5 1.5 0 0 1 3 12V2.5z"/><path d="M3 12a1.5 1.5 0 0 1 1.5-1.5H12"/><path d="M6 5.5h3.5M6 8h3.5"/></svg> StudOn → NotebookLM</div>
     <div class="course">
       <span class="muted small" id="course-kind">Kurs</span>
       <a id="course-link" href="#" target="_blank" rel="noopener"><span id="course-title">…</span></a>
@@ -40,8 +40,9 @@
         <label class="toggle"><input type="checkbox" data-opt="wiki" checked> Wikis</label>
         <label class="toggle"><input type="checkbox" data-opt="glossary" checked> Glossare</label>
         <label class="toggle"><input type="checkbox" data-opt="weblinks" checked> Weblinks &amp; YouTube</label>
+        <label class="toggle"><input type="checkbox" data-opt="fauTv" checked> FAU.tv-Transkripte</label>
         <label class="toggle"><input type="checkbox" data-opt="forum"> Foren</label>
-        <label class="toggle"><input type="checkbox" data-opt="media"> Audio/Video-Dateien</label>
+        <label class="toggle"><input type="checkbox" data-opt="media" checked> Videos &amp; Audio (Aufzeichnungen, interaktive Videos)</label>
         <label class="toggle"><input type="checkbox" data-opt="courseInfo" checked> Kurs-Info-Seite</label>
       </div>
       <div class="progress" id="scan-progress"><div></div></div>
@@ -83,7 +84,8 @@
           <h3>Optionen</h3>
           <label class="toggle"><input type="checkbox" id="opt-overview" checked> Kursstruktur als eigene Quelle anlegen</label>
           <label class="toggle"><input type="checkbox" id="opt-wait" checked> Auf Verarbeitung in NotebookLM warten</label>
-          <label class="toggle"><input type="checkbox" id="opt-zip"> Zusätzlich als ZIP herunterladen</label>
+          <label class="toggle"><input type="checkbox" id="opt-video-audio" checked> Videos nur als Tonspur hochladen (kleiner, schneller; ab 200 MB der einzige Weg)</label>
+        <label class="toggle"><input type="checkbox" id="opt-zip"> Zusätzlich als ZIP herunterladen</label>
           <label class="toggle"><input type="checkbox" id="opt-drive-mirror"> Nach Google Drive spiegeln <span class="muted small" id="drive-hint"></span></label>
           <label class="toggle"><input type="checkbox" id="opt-drive-source"> Drive-Dateien als Quellen verknüpfen (pptx/docx/xlsx → Slides/Docs/Sheets, syncbar)</label>
         </div>

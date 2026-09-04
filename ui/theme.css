@@ -1,23 +1,35 @@
+/*
+ * StudOn-Designsystem (studon9skin, gemessen am 2026-09-04 auf www.studon.fau.de):
+ *   Schrift  Roboto-StudOn, Verdana, Arial · 14px/20px · Text #161616, Titel #2c2c2c (600)
+ *   Farben   Primär/FAU-Blau #04316a · Link & Header-Buttons #4c6586 · Panel-Kopf #f9f9f9
+ *   Formen   Buttons und Eingabefelder eckig (0px), Panels 3px, Rahmen #dddddd, Inputs #757575
+ *   Hinweise Bootstrap-3-Alerts (info/warning/danger)
+ * Die Extension-Seiten laufen ausserhalb von StudOn; Roboto-StudOn ist dort nicht verfuegbar,
+ * die Fallback-Kette entspricht aber exakt der von StudOn.
+ */
 :root {
-  --bg: #0f1011;
-  --bg-deep: #08090a;
-  --surface: #191a1b;
-  --surface-2: #232426;
-  --text: #f7f8f8;
-  --text-2: #d0d6e0;
-  --text-3: #8a8f98;
-  --text-4: #62666d;
-  --accent: #5e6ad2;
-  --accent-2: #7170ff;
-  --accent-3: #828fff;
-  --green: #27a644;
-  --red: #e5484d;
-  --amber: #f5a524;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-2: rgba(255, 255, 255, 0.05);
-  --radius: 8px;
-  --font: "Inter Variable", Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: "Berkeley Mono", ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+  --bg: #ffffff;
+  --bg-2: #f9f9f9;
+  --surface: #ffffff;
+  --surface-2: #f3f3f3;
+  --text: #161616;
+  --text-2: #2c2c2c;
+  --text-3: #6f6f6f;
+  --text-4: #8c8c8c;
+  --accent: #04316a;
+  --accent-hover: #1a4a85;
+  --accent-2: #4c6586;
+  --accent-3: #4c6586;
+  --green: #1e7f3a;
+  --red: #a94442;
+  --amber: #8a6d3b;
+  --border: #dddddd;
+  --border-2: #e8e8e8;
+  --border-strong: #2c2c2c;
+  --input-border: #757575;
+  --radius: 3px;
+  --font: "Roboto-StudOn", Roboto, Verdana, Arial, Helvetica, sans-serif;
+  --mono: Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -28,90 +40,95 @@ html, body {
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
-  line-height: 1.5;
-  font-feature-settings: "cv01", "ss03";
+  line-height: 20px;
 }
 
-a { color: var(--accent-3); text-decoration: none; }
+a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-h1, h2, h3 { margin: 0; font-weight: 590; letter-spacing: -0.01em; }
-h1 { font-size: 18px; }
-h2 { font-size: 15px; }
-h3 { font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; }
+h1, h2, h3 { margin: 0; color: var(--text-2); font-weight: 600; }
+h1 { font-size: 20px; line-height: 26px; }
+h2 { font-size: 15px; line-height: 20px; }
+h3 { font-size: 13px; line-height: 18px; }
 
 button, .btn {
   font: inherit;
-  font-weight: 510;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--text-2);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 12px;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 4px 10px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  text-decoration: none;
+  display: inline-block;
 }
-button:hover:not(:disabled), .btn:hover { background: rgba(255, 255, 255, 0.08); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:hover:not(:disabled), .btn:hover { background: var(--surface-2); text-decoration: none; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover:not(:disabled) { background: var(--accent-2); }
-button.danger { color: #ffb3b5; border-color: rgba(229, 72, 77, 0.4); }
-button.small { padding: 4px 8px; font-size: 12px; }
-button.link { background: none; border: none; color: var(--accent-3); padding: 0; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.danger { color: var(--red); border-color: var(--red); }
+button.small { padding: 2px 8px; font-size: 12px; line-height: 16px; }
+button.link { background: none; border: none; color: var(--accent-2); padding: 0; }
+button.link:hover { text-decoration: underline; background: none; }
 
 input[type="text"], input[type="number"], select, textarea {
   font: inherit;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 10px;
+  background: #fff;
+  border: 1px solid var(--input-border);
+  border-radius: 0;
+  padding: 4px 8px;
   width: 100%;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-2); }
-select option { background: var(--surface); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(4, 49, 106, 0.15); }
 
 .card {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
 }
 
 .muted { color: var(--text-3); }
-.small { font-size: 12px; }
+.small { font-size: 12px; line-height: 16px; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grow { flex: 1; }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; user-select: none; }
-.toggle input { accent-color: var(--accent-2); width: 15px; height: 15px; margin: 0; }
+.toggle input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
 
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 10px;
-  border-radius: 9999px;
-  border: 1px solid #23252a;
+  padding: 1px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
   font-size: 12px;
+  line-height: 18px;
   color: var(--text-2);
 }
-.pill.ok { color: #7ee2a0; border-color: rgba(39, 166, 68, 0.5); }
-.pill.warn { color: #ffd479; border-color: rgba(245, 165, 36, 0.5); }
-.pill.err { color: #ffb3b5; border-color: rgba(229, 72, 77, 0.5); }
+.pill.ok { color: var(--green); border-color: #b7dfc2; background: #eaf6ee; }
+.pill.warn { color: var(--amber); border-color: #faebcc; background: #fcf8e3; }
+.pill.err { color: var(--red); border-color: #ebccd1; background: #f2dede; }
 
-.progress { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
-.progress > div { height: 100%; width: 0; background: var(--accent-2); transition: width 0.2s ease; }
+.progress { height: 8px; border-radius: 0; background: var(--border-2); overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
 
 .log {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
-  color: var(--text-3);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 12px;
   max-height: 220px;
@@ -119,17 +136,22 @@ select option { background: var(--surface); }
   white-space: pre-wrap;
   word-break: break-word;
 }
-.log .err { color: #ffb3b5; }
-.log .ok { color: #7ee2a0; }
+.log .err { color: var(--red); }
+.log .ok { color: var(--green); }
 
+/* Bootstrap-3-Alerts, wie StudOn sie nutzt */
 .banner {
   padding: 10px 14px;
   border-radius: var(--radius);
-  border: 1px solid rgba(245, 165, 36, 0.5);
-  background: rgba(245, 165, 36, 0.08);
-  color: #ffd479;
+  border: 1px solid #faebcc;
+  background: #fcf8e3;
+  color: #8a6d3b;
   font-size: 13px;
 }
-.banner.error { border-color: rgba(229, 72, 77, 0.5); background: rgba(229, 72, 77, 0.08); color: #ffb3b5; }
-.banner.info { border-color: rgba(113, 112, 255, 0.5); background: rgba(113, 112, 255, 0.08); color: #c7c8ff; }
+.banner.error { border-color: #ebccd1; background: #f2dede; color: #a94442; }
+.banner.info { border-color: #bce8f1; background: #d9edf7; color: #31708f; }
 .banner a { color: inherit; text-decoration: underline; }
+
+/* Markenzeile: kleines Buch-Icon statt Emoji */
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
+.brand svg { width: 16px; height: 16px; flex: none; }

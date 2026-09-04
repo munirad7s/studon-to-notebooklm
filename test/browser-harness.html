@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Harness</title>
+</head>
+<body>
+  <div id="mount"></div>
+  <pre id="harness-errors" style="color:#f66;font:12px/1.5 monospace;white-space:pre-wrap"></pre>
+  <script src="../lib/jszip.min.js"></script>
+  <script type="module">
+    /**
+     * Laedt die Export-Seite ausserhalb der Extension, mit gefaelschtem StudOn
+     * und NotebookLM. Damit laesst sich der komplette Ablauf im echten Browser
+     * durchspielen - Scan, Auswahl, Export, zweiter Lauf - bevor die Extension
+     * in Chrome geladen wird. Ergaenzt die Node-Tests um alles, was erst im
+     * Browser auffaellt: Modulkette, DOM-Verdrahtung, Blob- und Header-Umgang.
+     *
+     * Start:  python3 -m http.server 8791
+     *         http://localhost:8791/test/browser-harness.html
+     * Der Seitentitel zeigt OK oder FEHLER (n).
+     */
+    const errors = [];
+    const report = () => {
+      document.getElementById('harness-errors').textContent = errors.length ? errors.join('\n\n') : 'KEINE FEHLER';
+      document.title = errors.length ? `FEHLER (${errors.length})` : 'OK';
+    };
+    window.addEventListener('error', (e) => { errors.push(`error: ${e.message}`); report(); });
+    window.addEventListener('unhandledrejection', (e) => {
+      errors.push(`rejection: ${e.reason?.stack || e.reason?.message || e.reason}`);
+      report();
+    });
+
+    // --- chrome-Stub ---------------------------------------------------------
+    const store = {};
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: async (keys) => {
+            if (keys == null) return { ...store };
+            const list = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, store[k]]));
+          },
+          set: async (obj) => { Object.assign(store, obj); },
+          remove: async (keys) => { for (const k of [].concat(keys)) delete store[k]; },
+        },
+      },
+      runtime: {
+        id: 'harness',
+        sendMessage: () => {},
+        openOptionsPage: () => {},
+        getURL: (p) => `../${p}`,
+        getManifest: () => ({ version: '0.0.0-harness' }),
+      },
+      identity: {
+        getRedirectURL: () => 'https://harness.chromiumapp.org/',
+        launchWebAuthFlow: async () => { throw new Error('Drive im Harness nicht verfuegbar'); },
+      },
+      downloads: { download: async () => 1 },
+      tabs: { query: async () => [], create: async () => ({ id: 1 }) },
+    };
+
+    // --- Fake-StudOn und Fake-NotebookLM ------------------------------------
+    const fx = await import('./fixtures/studon.js');
+    const ftv = await import('./fixtures/fautv.js');
+    const PAGES = fx.routes();
+    // Lernmodul-Seite 2 verlinkt einen fau.tv-Clip (wie im HCI-Kurs) -> Transkript-Pfad wird mitgetestet.
+    PAGES['https://www.studon.fau.de/studon/ilias.php?baseClass=ilLMPresentationGUI&ref_id=6815119&obj_id=102'] =
+      fx.lmPage('Definitionen', '<p class="ilc_Paragraph"><a class="ilc_link_ExtLink" href="https://www.fau.tv/clip/id/42516">https://www.fau.tv/clip/id/42516</a></p>');
+    const fauTvFetch = ftv.fakeFauTvFetch();
+    // Video-Kurs (HTML-Lernmodul mit MP4-Startdatei, Interaktives Video) als Unterordner des Kurses:
+    // die Kursseite bekommt einen zusaetzlichen Ordner, der auf die Video-Routen zeigt.
+    Object.assign(PAGES, fx.videoRoutes());
+    PAGES['https://www.studon.fau.de/studon/ilias.php?baseClass=ilrepositorygui&ref_id=' + fx.COURSE_REF] =
+      fx.coursePage.replace('</body>', fx.legacyRowWithProps({ type: 'fold', refId: fx.VIDEO_COURSE_REF, title: '1.1. Vorlesungsaufzeichnungen', href: 'https://www.studon.fau.de/studon/go/fold/' + fx.VIDEO_COURSE_REF }) + '</body>');
+    const HTLM_PRESENTATION = 'https://www.studon.fau.de/studon/ilias.php?baseClass=ilHTLMPresentationGUI&ref_id=' + fx.HTLM_REF;
+    // window.fetch ist hier noch das Original (die Umleitung kommt weiter unten).
+    const sampleVideo = await (await window.fetch('../test/fixtures/sample-av.mp4')).arrayBuffer();
+
+    const NLM_HOME =
+      '<html><script>{"SNlM0e":"harness-token","cfb2h":"boq_harness","FdrFJe":"-1","oPEP7c":"harness@fau.de"}<\/script></html>';
+
+    /** Antwort im batchexecute-Chunk-Format. */
+    function batch(rpcId, result) {
+      const chunk = JSON.stringify([
+        ['wrb.fr', rpcId, result == null ? null : JSON.stringify(result), null, null, null, 'generic'],
+      ]);
+      return `)]}'\n\n${chunk.length}\n${chunk}\n25\n[["di",12],["af.httprm",12,"1",1]]\n`;
+    }
+
+    let sourceCounter = 0;
+    const nextSource = () => `src-${++sourceCounter}`;
+    const created = [];
+
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (!/^https:\/\/(www\.studon\.fau\.de|notebooklm\.google\.com|notebook\.google\.com|(www\.)?fau\.tv)/.test(url)) {
+        return realFetch(input, init);
+      }
+
+      if (/fau\.tv/.test(url)) {
+        // Fixture-fetch liefert Pseudo-Responses; hier in echte Response-Objekte umsetzen.
+        const r = await fauTvFetch(url, init || {});
+        const text = await r.text();
+        return Object.assign(new Response(text, { status: r.status, headers: { 'content-type': init && init.method === 'POST' ? 'application/json' : 'text/html' } }), {});
+      }
+
+      if (url.includes('studon.fau.de')) {
+        // HTML-Lernmodul: Aufruf "leitet" auf ein MP4 - hier das 21-KB-Fixture mit Video-Headern.
+        if (url === HTLM_PRESENTATION || /\.mp4(\?|$)/.test(url)) {
+          return Object.defineProperty(
+            new Response(sampleVideo.slice(0), { headers: { 'content-type': 'video/mp4', 'content-length': String(sampleVideo.byteLength) } }),
+            'url', { value: url === HTLM_PRESENTATION ? fx.HTLM_VIDEO_URL : url }
+          );
+        }
+        if (/target=file_|cmd=(send|download)[Ff]ile|cmd=sendfile/.test(url)) {
+          return new Response(new Blob(['%PDF-1.4 harness']), {
+            headers: {
+              'content-type': 'application/pdf',
+              'content-disposition': 'attachment; filename="harness.pdf"',
+            },
+          });
+        }
+        const html = PAGES[url];
+        if (html == null) return new Response('nicht gefunden', { status: 404 });
+        return new Response(html, { headers: { 'content-type': 'text/html' } });
+      }
+
+      // NotebookLM
+      if (url.includes('batchexecute')) {
+        const rpc = new URL(url).searchParams.get('rpcids');
+        if (rpc === 'wXbhsf') {
+          // Ein vorhandenes Notebook, damit mode=existing durchgespielt werden kann.
+          return new Response(batch(rpc, [[['Vorhandenes Notebook', [], 'nb-existing', '📘', null, [1, false, true, null, null, [1756000000, 0]]]]]));
+        }
+        if (rpc === 'CCqFvf') {
+          const id = `nb-${created.length + 1}`;
+          created.push(id);
+          return new Response(batch(rpc, [null, null, id]));
+        }
+        if (rpc === 'rLM1Ne') {
+          const ready = (id) => [[id], id, [null, null, null, null, 3], [null, 2]];
+          const ids = Array.from({ length: sourceCounter }, (_, i) => ready(`src-${i + 1}`));
+          return new Response(batch(rpc, [[null, ids, 'Harness']]));
+        }
+        if (rpc === 'izAoDd' || rpc === 'ozz5Z') {
+          return new Response(batch(rpc, [[[[nextSource()], 'Quelle']]]));
+        }
+        if (rpc === 'o4cbdc') return new Response(batch(rpc, [[[nextSource()]]]));
+        return new Response(batch(rpc, []));
+      }
+      if (url.includes('/upload/')) {
+        return new Response('', {
+          headers: { 'x-goog-upload-url': 'https://notebooklm.google.com/uploadsession' },
+        });
+      }
+      if (url.includes('uploadsession')) return new Response('ok');
+      return new Response(NLM_HOME, { headers: { 'content-type': 'text/html' } });
+    };
+
+    // --- Export-Seite laden --------------------------------------------------
+    const html = await (await realFetch('../export/export.html')).text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    for (const link of doc.head.querySelectorAll('link[rel="stylesheet"]')) {
+      const clone = document.createElement('link');
+      clone.rel = 'stylesheet';
+      clone.href = `../export/${link.getAttribute('href')}`.replace('../export/../', '../');
+      document.head.appendChild(clone);
+    }
+    document.getElementById('mount').append(...doc.body.children);
+
+    // Eigene Startparameter der Harness-URL (z. B. autostart=1&mode=existing) werden durchgereicht.
+    const own = new URLSearchParams(location.search);
+    if (!own.has('ref')) { own.set('ref', fx.COURSE_REF); own.set('type', 'crs'); own.set('title', 'Harness-Kurs'); }
+    history.replaceState({}, '', `?${own.toString()}`);
+    await import('../export/export.js');
+    setTimeout(report, 1500);
+  </script>
+</body>
+</html>
