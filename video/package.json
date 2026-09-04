@@ -1,0 +1,18 @@
+{
+  "name": "studon-to-notebooklm-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Erklärvideo zur Extension (Remotion / React)",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.jsx",
+    "render": "remotion render src/index.jsx Erklaervideo out/erklaervideo.mp4 --codec=h264 --crf=20",
+    "still": "remotion still src/index.jsx Erklaervideo out/poster.png --frame=0"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0",
+    "@remotion/cli": "^4.0.0"
+  }
+}

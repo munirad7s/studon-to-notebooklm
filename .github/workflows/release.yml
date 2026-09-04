@@ -1,0 +1,35 @@
+name: Release
+
+# Ein Tag wie v2.0.1 baut das Extension-ZIP und haengt es an ein GitHub-Release.
+# Download-Link danach: https://github.com/munirad7s/studon-to-notebooklm/releases/latest/download/studon-to-notebooklm.zip
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+      - name: Versions-Tag und Manifest muessen zusammenpassen
+        run: |
+          MANIFEST=$(node -p "require('./manifest.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          test "$MANIFEST" = "$TAG" || { echo "manifest.json hat $MANIFEST, Tag ist $TAG"; exit 1; }
+          cp "dist/studon-to-notebooklm-$MANIFEST.zip" dist/studon-to-notebooklm.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/studon-to-notebooklm.zip
+            dist/studon-to-notebooklm-*.zip
+          generate_release_notes: true

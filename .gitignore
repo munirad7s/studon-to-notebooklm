@@ -9,3 +9,9 @@ dist/
 .idea/
 .vscode/
 Thumbs.db
+
+# Video-Projekt und Site-Artefakte
+video/node_modules/
+video/out/
+site/media/*.mp4
+site/downloads/
