@@ -62,7 +62,12 @@
 
     // --- Fake-StudOn und Fake-NotebookLM ------------------------------------
     const fx = await import('./fixtures/studon.js');
+    const ftv = await import('./fixtures/fautv.js');
     const PAGES = fx.routes();
+    // Lernmodul-Seite 2 verlinkt einen fau.tv-Clip (wie im HCI-Kurs) -> Transkript-Pfad wird mitgetestet.
+    PAGES['https://www.studon.fau.de/studon/ilias.php?baseClass=ilLMPresentationGUI&ref_id=6815119&obj_id=102'] =
+      fx.lmPage('Definitionen', '<p class="ilc_Paragraph"><a class="ilc_link_ExtLink" href="https://www.fau.tv/clip/id/42516">https://www.fau.tv/clip/id/42516</a></p>');
+    const fauTvFetch = ftv.fakeFauTvFetch();
 
     const NLM_HOME =
       '<html><script>{"SNlM0e":"harness-token","cfb2h":"boq_harness","FdrFJe":"-1","oPEP7c":"harness@fau.de"}<\/script></html>';
@@ -82,8 +87,15 @@
     const realFetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input.url;
-      if (!/^https:\/\/(www\.studon\.fau\.de|notebooklm\.google\.com|notebook\.google\.com)/.test(url)) {
+      if (!/^https:\/\/(www\.studon\.fau\.de|notebooklm\.google\.com|notebook\.google\.com|(www\.)?fau\.tv)/.test(url)) {
         return realFetch(input, init);
+      }
+
+      if (/fau\.tv/.test(url)) {
+        // Fixture-fetch liefert Pseudo-Responses; hier in echte Response-Objekte umsetzen.
+        const r = await fauTvFetch(url, init || {});
+        const text = await r.text();
+        return Object.assign(new Response(text, { status: r.status, headers: { 'content-type': init && init.method === 'POST' ? 'application/json' : 'text/html' } }), {});
       }
 
       if (url.includes('studon.fau.de')) {

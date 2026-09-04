@@ -140,3 +140,53 @@ test('collectItems reads tile decks and legacy rows on the same page (HCI course
 
   assert.equal(items.filter((i) => i.type === 'lm').length, 3);
 });
+
+/* ---------- fau.tv ---------- */
+
+import * as ftv from './fixtures/fautv.js';
+
+const LM_PAGE_102 = 'https://www.studon.fau.de/studon/ilias.php?baseClass=ilLMPresentationGUI&ref_id=6815119&obj_id=102';
+const FAUTV_LINK = '<p class="ilc_Paragraph ilc_text_block_Standard"><a class="ilc_link_ExtLink" rel="noopener" target="_blank" href="https://www.fau.tv/clip/id/42516">https://www.fau.tv/clip/id/42516</a></p>';
+
+function crawlerWithFauTv(fauTvOpts = {}, scanOpts = {}) {
+  const routes = { ...fx.routes(), [LM_PAGE_102]: fx.lmPage('Definitionen', FAUTV_LINK) };
+  const studon = fx.fakeFetch(routes);
+  const fautv = ftv.fakeFauTvFetch(fauTvOpts);
+  const fetch = (url, init) => (/fau\.tv/.test(url) ? fautv(url, init) : studon(url, init));
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, forum: false, ...scanOpts } });
+  return { c, fautv };
+}
+
+test('fau.tv-Link im Lernmodul wird zum Transkript-Text, nicht zum Link', async () => {
+  const { c, fautv } = crawlerWithFauTv();
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+
+  const transcript = lm.children.find((n) => n.kind === 'text' && /^Transkript – /.test(n.title));
+  assert.ok(transcript, 'Transkript-Knoten unter dem Lernmodul');
+  assert.equal(transcript.title, `Transkript – ${ftv.TITLE}`);
+  assert.equal(transcript.video, ftv.FINAL_URL);
+  assert.equal(transcript.segments, ftv.SEGMENTS.length);
+  assert.match(transcript.content, /\*\*\[00:00\]\*\* Dear students/);
+  assert.ok(transcript.words > 20);
+
+  assert.equal(lm.children.some((n) => n.kind === 'link' && /fau\.tv/.test(n.href)), false, 'kein Link-Knoten fuer fau.tv');
+  assert.equal(fautv.calls.filter((x) => x.init.method === 'POST').length, 1, 'ein Livewire-Aufruf pro Clip');
+});
+
+test('fau.tv ohne Transkript wird als Fehler am Knoten vermerkt, Scan laeuft weiter', async () => {
+  const { c } = crawlerWithFauTv({ withTranscript: false });
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+  assert.equal(lm.children.some((n) => /^Transkript – /.test(n.title || '')), false);
+  assert.ok(lm.errors.some((e) => /fau\.tv 42516/.test(e)), JSON.stringify(lm.errors));
+  assert.ok(lm.children.some((n) => n.kind === 'text'), 'Lernmodul-Text selbst ist trotzdem da');
+});
+
+test('Option fauTv=false laesst fau.tv-Links unangetastet', async () => {
+  const { c, fautv } = crawlerWithFauTv({}, { fauTv: false });
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const lm = flatten(root).find((n) => n.kind === 'container' && n.type === 'lm');
+  assert.equal(lm.children.some((n) => /^Transkript – /.test(n.title || '')), false);
+  assert.equal(fautv.calls.length, 0, 'fau.tv wird nicht kontaktiert');
+});

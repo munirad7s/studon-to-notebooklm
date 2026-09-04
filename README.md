@@ -23,6 +23,9 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
    - Texte (Lernmodule, Seiten, Wiki) werden als Textquellen angelegt, Links als URL-Quellen
    - eine Quelle „Kursstruktur“ beschreibt den kompletten Baum
    - ist ein Notebook voll (50 Quellen Free / 300 Pro), geht es automatisch in „Kurs (2)“ weiter
+   - **FAU.tv-Videos** werden nicht heruntergeladen (HLS-Stream, für NotebookLM zu groß) – stattdessen holt die
+     Extension das fertige **Whisper-Transkript** des Videoportals und legt es als Textquelle mit Zeitmarken an.
+     Voraussetzung: im selben Chrome-Profil bei [www.fau.tv](https://www.fau.tv) angemeldet, falls der Clip das verlangt.
 4. **Sync** – Die Extension merkt sich pro Kurs, was schon in welchem Notebook liegt. Der nächste Lauf lädt nur Neues nach.
 
 ## Installation

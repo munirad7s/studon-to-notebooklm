@@ -45,7 +45,9 @@
     "https://www.studon.fau.de/*",
     "https://notebooklm.google.com/*",
     "https://notebook.google.com/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://www.fau.tv/*",
+    "https://fau.tv/*"
   ],
   "web_accessible_resources": [
     {
