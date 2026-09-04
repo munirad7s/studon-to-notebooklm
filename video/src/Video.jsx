@@ -155,7 +155,7 @@ function NotebookScene() {
 function Features() {
   const tiles = [
     ['Alles vom Kurs', 'Ordner, Dateien, Lernmodule, Übungen, Wikis, Glossare, Foren – alle drei StudOn-Layouts.'],
-    ['Videos als Tonspur', 'Aufzeichnungen über 200 MB werden ohne Neukodierung zur .m4a – NotebookLM transkribiert.'],
+    ['Videos als Tonspur', 'Aufzeichnungen werden ohne Neukodierung zur .m4a – klein genug für NotebookLM, das sie selbst transkribiert.'],
     ['fau.tv-Transkripte', 'Statt des Videos das fertige Whisper-Transkript mit Zeitmarken.'],
     ['Inkrementell', 'Beim nächsten Lauf kommt nur Neues dazu. Nichts doppelt.'],
   ];
@@ -191,9 +191,9 @@ function Install() {
             <span style={{ width: 64, height: 64, border: '3px solid #fff', display: 'grid', placeItems: 'center', fontWeight: 600, flex: 'none' }}>{i + 1}</span>{s}
           </Pop>
         ))}
-        <Pop delay={70} style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', gap: 30 }}>
-          <span style={{ fontSize: 48, fontWeight: 600 }}>studon-to-notebooklm.pages.dev</span>
-          <span style={{ fontSize: 26, opacity: 0.8 }}>Kostenlos · Open Source · Läuft komplett im Browser</span>
+        <Pop delay={70} style={{ marginTop: 'auto' }}>
+          <div style={{ fontSize: 54, fontWeight: 600, whiteSpace: 'nowrap' }}>studon-to-notebooklm.pages.dev</div>
+          <div style={{ fontSize: 28, opacity: 0.8, marginTop: 10, whiteSpace: 'nowrap' }}>Kostenlos · Open Source (MIT) · läuft komplett im Browser</div>
         </Pop>
       </AbsoluteFill>
     </Scene>

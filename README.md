@@ -41,7 +41,11 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
 
 ## Installation
 
-1. Repo klonen oder als ZIP laden.
+**Schnellster Weg:** [studon-to-notebooklm.pages.dev](https://studon-to-notebooklm.pages.dev) – ZIP laden, entpacken,
+in Chrome als entpackte Erweiterung laden. Alternativ das ZIP aus den
+[GitHub-Releases](https://github.com/munirad7s/studon-to-notebooklm/releases/latest).
+
+1. Repo klonen, ZIP aus dem Release laden oder von der Seite oben.
 2. `chrome://extensions` → **Entwicklermodus** an → **Entpackte Erweiterung laden** → diesen Ordner wählen.
 3. In diesem Chrome-Profil bei [notebooklm.google.com](https://notebooklm.google.com) **und** bei [StudOn](https://www.studon.fau.de) angemeldet sein.
 4. Kurs öffnen → unten rechts **⚡ NotebookLM** → im Dialog Inhalt und Notebook wählen → **Exportieren**.

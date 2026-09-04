@@ -166,7 +166,7 @@ export function NotebookMock({ sources, question, answer, typed }) {
           </Pop>
         ))}
       </div>
-      <div style={{ flex: 1, padding: '48px 80px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, padding: '48px 80px 190px', display: 'flex', flexDirection: 'column' }}>
         <div style={{ fontSize: 34, fontWeight: 600 }}>Human Computer Interaction (SoSe26)</div>
         <div style={{ marginTop: 'auto' }}>
           {answer && (
