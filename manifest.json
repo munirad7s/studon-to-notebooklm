@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "StudOn to NotebookLM",
-  "version": "1.0.2",
-  "description": "1-Click export of FAU StudOn course materials, slides, and notes into NotebookLM & Google Drive or structured ZIP.",
+  "name": "StudOn → NotebookLM",
+  "version": "2.0.0",
+  "description": "Exportiert komplette FAU-StudOn-Kurse (Ordner, Dateien, Lernmodule, Übungen, Sitzungen, Links) direkt in Google NotebookLM – optional gespiegelt nach Google Drive oder als ZIP.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8tYqMsIHtdyAfEYjof2YfwKbeYMRy6grCKKBsU5gXWpNLPcfMK9K4ImX/r3oeg0Yr/Osw61wwYRdDMnG3grohOuutQL9zJDPSwX33x/De/MvEHj0WiHCX/IZCiQp/tpZSanpF8UURuCptPBIqQXcPxAZfSCB7YwWXvyLrkrj1NI9sMU1AIy5QtSg7YugU2uCNEcKJBbRec4OEhnXmxrXPUQQh0nqA+YtDfHthoyUvYV/FyN8YDnJ2GjvHb6aEgUgJMB/2wnXf/+9N5rVdjt1+EJnfZREakMi8XXrYVd84CIoL0AH0WGR7Ac+SHfNy2/R6zmEK9arsFPh6A4bxIzSNQIDAQAB",
   "icons": {
     "16": "icons/icon_16.png",
     "48": "icons/icon_48.png",
@@ -10,51 +11,31 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
+    "default_title": "StudOn → NotebookLM",
     "default_icon": {
       "16": "icons/icon_16.png",
       "48": "icons/icon_48.png",
       "128": "icons/icon_128.png"
     }
   },
+  "options_page": "options/options.html",
   "background": {
     "service_worker": "background/service_worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.studon.fau.de/studon/*"
-      ],
-      "js": [
-        "content/content.bundle.js"
-      ],
-      "css": [
-        "content/content.css"
-      ],
-      "run_at": "document_end"
+      "matches": ["https://www.studon.fau.de/studon/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
     }
   ],
-  "permissions": [
-    "activeTab",
-    "storage",
-    "downloads",
-    "identity"
-  ],
+  "permissions": ["storage", "downloads", "identity", "tabs", "unlimitedStorage"],
   "host_permissions": [
     "https://www.studon.fau.de/*",
     "https://notebooklm.google.com/*",
+    "https://notebook.google.com/*",
     "https://www.googleapis.com/*"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "icons/*",
-        "lib/*",
-        "content/*"
-      ],
-      "matches": [
-        "https://www.studon.fau.de/*"
-      ]
-    }
   ]
 }

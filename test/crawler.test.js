@@ -1,0 +1,121 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { DOMParser } from 'linkedom';
+import { StudOnCrawler, SessionExpiredError, collectItems, flatten, treeToOverview } from '../lib/crawler.js';
+import * as fx from './fixtures/studon.js';
+
+function crawler(extra = {}, fetchOpts = {}) {
+  const fetch = fx.fakeFetch(fx.routes(), fetchOpts);
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, forum: false, ...extra } });
+  return { c, fetch };
+}
+
+test('collectItems reads ILIAS 9 standard items with type, section and properties', () => {
+  const doc = new DOMParser().parseFromString(fx.coursePage, 'text/html');
+  const items = collectItems(doc);
+  assert.equal(items.length, 10);
+  const file = items.find((i) => i.refId === '7000001');
+  assert.equal(file.type, 'file');
+  assert.equal(file.title, 'HCI_SS_2026_00_Orga.pdf');
+  assert.equal(file.section, 'Vorlesung');
+  assert.equal(file.sizeText, '1,20 MB');
+  assert.equal(file.sizeBytes, Math.round(1.2 * 1024 * 1024));
+  assert.equal(file.modified, 'Gestern, 14:11');
+  assert.equal(items.find((i) => i.refId === '6071389').section, 'Übungen');
+  assert.equal(items.find((i) => i.refId === '7000005').type, 'tst');
+});
+
+test('scan walks folders, sessions, exercises, learning modules, pages and links', async () => {
+  const { c } = crawler();
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const all = flatten(root);
+  const byTitle = (t) => all.find((n) => n.title === t);
+
+  // nested folders
+  const folder = byTitle('Übungsblätter');
+  assert.equal(folder.kind, 'container');
+  assert.deepEqual(folder.children.map((n) => n.title), ['Blatt_01.pdf', 'Blatt_02 (Lösung)', 'Alt']);
+  const nested = byTitle('Alt');
+  assert.equal(nested.children[0].title, 'Blatt_2024.pdf');
+  assert.deepEqual(nested.children[0].path, ['HCI', 'Übungsblätter', 'Alt']);
+  assert.equal(nested.children[0].downloadUrl, 'https://www.studon.fau.de/studon/goto.php?target=file_7000013_download');
+
+  // session materials
+  assert.equal(byTitle('Kickoff_Slides.pdf').kind, 'file');
+
+  // exercise: text + assignment file, but not "own submissions"
+  const exc = byTitle('Übung 1: Bedürfnisse');
+  const excText = exc.children.find((n) => n.kind === 'text');
+  assert.match(excText.content, /Task-Artifact-Cycle/);
+  assert.deepEqual(exc.children.filter((n) => n.kind === 'file').map((n) => n.filename), ['Aufgabenblatt_1.pdf']);
+
+  // learning module: one merged text, deduplicated file, youtube link
+  const lm = byTitle('01_Introduction_to_HCI');
+  const lmText = lm.children.find((n) => n.kind === 'text');
+  assert.match(lmText.content, /^# 01_Introduction_to_HCI/);
+  assert.match(lmText.content, /## Motivation[\s\S]*## Definitionen/);
+  assert.match(lmText.content, /\| Usability \| Gebrauchstauglichkeit \|/);
+  assert.equal(lmText.pages, 2);
+  const lmFiles = lm.children.filter((n) => n.kind === 'file');
+  assert.equal(lmFiles.length, 1);
+  assert.equal(lmFiles[0].filename, 'HCI_SS_2026_01_Introduction_1.pdf');
+  const yt = lm.children.find((n) => n.kind === 'link');
+  assert.equal(yt.href, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(yt.isYouTube, true);
+
+  // content page
+  assert.match(byTitle('FAQ').children[0].content, /Wann ist die Klausur\?/);
+
+  // weblinks: external + youtube, hidden callLink reported
+  const webr = byTitle('Weiterführende Links');
+  assert.deepEqual(webr.children.map((n) => n.href), ['https://www.interaction-design.org/literature', 'https://www.youtube.com/watch?v=abc123def45']);
+  assert.match(webr.errors[0], /Versteckter Link/);
+
+  // skipped types are listed with reasons; item groups are ignored
+  const tst = byTitle('Probeklausur');
+  assert.equal(tst.kind, 'skipped');
+  assert.equal(byTitle('Gruppe A'), undefined);
+  const forum = byTitle('Forum');
+  assert.equal(forum.kind, 'skipped');
+  assert.match(forum.reason, /deaktiviert/);
+
+  // course info text first
+  assert.equal(root.children[0].kind, 'text');
+  assert.match(root.children[0].content, /Mensch-Computer-Interaktion/);
+
+  assert.equal(c.stats.files, 7);
+  assert.ok(c.stats.errors === 0, `errors: ${JSON.stringify(all.flatMap((n) => n.errors))}`);
+});
+
+test('scan never fetches the same object twice and respects the info option', async () => {
+  const { c, fetch } = crawler({ courseInfo: false });
+  await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const unique = new Set(fetch.calls);
+  assert.equal(unique.size, fetch.calls.length);
+  assert.ok(!fetch.calls.some((u) => u.includes('infoScreen')));
+});
+
+test('scan aborts with SessionExpiredError when StudOn redirects to SSO', async () => {
+  const { c } = crawler({}, { loginFor: ['ref_id=6071389'] });
+  await assert.rejects(c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' }), SessionExpiredError);
+});
+
+test('scan tolerates missing objects and records errors instead of failing', async () => {
+  const routes = fx.routes();
+  delete routes['https://www.studon.fau.de/studon/go/copa/7000004'];
+  const fetch = fx.fakeFetch(routes);
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const faq = flatten(root).find((n) => n.title === 'FAQ');
+  assert.match(faq.errors[0], /HTTP 404/);
+  assert.equal(c.stats.errors, 1);
+});
+
+test('treeToOverview renders the structure as markdown', async () => {
+  const { c } = crawler();
+  const root = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  const md = treeToOverview(root, { courseUrl: 'https://www.studon.fau.de/studon/go/crs/234016' });
+  assert.match(md, /^# HCI – Kursstruktur/);
+  assert.match(md, /- 📁 Übungsblätter \(Abschnitt: Übungen\)\n  - 📄 Blatt_01.pdf \(226,41 KB\)/);
+  assert.match(md, /⏭ Probeklausur/);
+});

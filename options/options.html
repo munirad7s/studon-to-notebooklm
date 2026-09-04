@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Optionen · StudOn → NotebookLM</title>
+  <link rel="stylesheet" href="../ui/theme.css">
+  <style>
+    main { max-width: 760px; margin: 0 auto; padding: 28px 22px 60px; display: flex; flex-direction: column; gap: 16px; }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .field label { font-size: 13px; color: var(--text-2); font-weight: 510; }
+    .field .help { font-size: 12px; color: var(--text-3); }
+    code { font-family: var(--mono); font-size: 12px; background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 4px; }
+    ol { padding-left: 20px; color: var(--text-2); font-size: 13px; }
+    ol li { margin: 4px 0; }
+    .courses li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-2); }
+    .courses { list-style: none; padding: 0; margin: 0; }
+    #saved { transition: opacity 0.3s; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="row">
+      <h1>⚡ StudOn → NotebookLM · Optionen</h1>
+      <span class="grow"></span>
+      <span class="muted small" id="saved" style="opacity:0">Gespeichert</span>
+    </div>
+    <div id="welcome" class="banner info" hidden>
+      Willkommen! Öffne einen Kurs auf <a href="https://www.studon.fau.de/studon/ilias.php?baseClass=ilMembershipOverviewGUI" target="_blank">StudOn</a> und klicke unten rechts auf den ⚡-Button. Für den Export musst du in diesem Chrome-Profil bei <a href="https://notebooklm.google.com/" target="_blank">NotebookLM</a> angemeldet sein.
+    </div>
+
+    <section class="card">
+      <h2>NotebookLM</h2>
+      <div class="field">
+        <label for="authuser">Google-Account-Index (authuser)</label>
+        <input type="number" id="authuser" min="0" max="9" value="0">
+        <div class="help">0 = erster in Chrome angemeldeter Google-Account. Bei mehreren Accounts den Index aus der NotebookLM-URL (<code>?authuser=N</code>) eintragen.</div>
+      </div>
+      <div class="field">
+        <label for="maxSources">Quellen pro Notebook (Info)</label>
+        <input type="number" id="maxSources" min="10" max="1000" value="300">
+        <div class="help">Free: 50 · Pro/Ultra: 300. Bei voller Kapazität legt die Extension automatisch ein Folge-Notebook „… (2)“ an.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Google Drive (optional)</h2>
+      <p class="muted small">Spiegelt die Kursdateien in einen Drive-Ordner und kann sie als syncbare Drive-Quellen in NotebookLM verknüpfen (pptx/docx/xlsx werden dabei zu Slides/Docs/Sheets konvertiert). Dafür braucht die Extension eine OAuth-Client-ID aus der Google Cloud Console:</p>
+      <ol>
+        <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com → APIs &amp; Services → Credentials</a> → „Create credentials“ → „OAuth client ID“, Typ <b>Web application</b>.</li>
+        <li>Unter „Authorized redirect URIs“ genau diese URI eintragen: <code id="redirect-uri">…</code></li>
+        <li>Unter „Enabled APIs“ die <b>Google Drive API</b> aktivieren; im OAuth-Consent-Screen (Testing) deinen Account als Test-User eintragen.</li>
+        <li>Client-ID hier einfügen und „Drive verbinden“ testen.</li>
+      </ol>
+      <div class="field">
+        <label for="driveClientId">OAuth-Client-ID</label>
+        <input type="text" id="driveClientId" placeholder="1234567890-abc.apps.googleusercontent.com">
+      </div>
+      <div class="field">
+        <label for="driveRootFolder">Drive-Zielordner (in „Meine Ablage“)</label>
+        <input type="text" id="driveRootFolder" value="NotebookLM Import">
+      </div>
+      <div class="row">
+        <button id="btn-drive-test">Drive verbinden / testen</button>
+        <button id="btn-drive-logout" class="small">Drive-Token verwerfen</button>
+        <span class="muted small" id="drive-status"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Standard-Scan-Umfang</h2>
+      <div class="row" style="gap: 8px 16px" id="scan-defaults">
+        <label class="toggle"><input type="checkbox" data-opt="files"> Dateien</label>
+        <label class="toggle"><input type="checkbox" data-opt="learningModules"> Lernmodule</label>
+        <label class="toggle"><input type="checkbox" data-opt="exercises"> Übungen</label>
+        <label class="toggle"><input type="checkbox" data-opt="sessions"> Sitzungen</label>
+        <label class="toggle"><input type="checkbox" data-opt="pages"> Inhaltsseiten</label>
+        <label class="toggle"><input type="checkbox" data-opt="wiki"> Wikis</label>
+        <label class="toggle"><input type="checkbox" data-opt="glossary"> Glossare</label>
+        <label class="toggle"><input type="checkbox" data-opt="weblinks"> Weblinks &amp; YouTube</label>
+        <label class="toggle"><input type="checkbox" data-opt="forum"> Foren</label>
+        <label class="toggle"><input type="checkbox" data-opt="media"> Audio/Video</label>
+        <label class="toggle"><input type="checkbox" data-opt="courseInfo"> Kurs-Info</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Kurs-Gedächtnis</h2>
+      <p class="muted small">Pro Kurs merkt sich die Extension, welche Objekte schon in welchem Notebook liegen (inkrementeller Sync). Zurücksetzen erzwingt beim nächsten Export einen kompletten Neu-Upload.</p>
+      <ul class="courses" id="courses"></ul>
+    </section>
+
+    <section class="card muted small">
+      Extension-ID: <code id="ext-id"></code> · Version <span id="ext-version"></span> ·
+      <a href="https://github.com/munirad7s/studon-to-notebooklm" target="_blank">GitHub</a>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

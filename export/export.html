@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudOn → NotebookLM</title>
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="export.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="bolt">⚡</span> StudOn → NotebookLM</div>
+    <div class="course">
+      <span class="muted small" id="course-kind">Kurs</span>
+      <a id="course-link" href="#" target="_blank" rel="noopener"><span id="course-title">…</span></a>
+    </div>
+    <div class="account">
+      <span class="pill" id="nlm-account">NotebookLM: prüfe …</span>
+      <a href="../options/options.html" target="_blank" class="btn small">Optionen</a>
+    </div>
+  </header>
+
+  <main>
+    <div id="banner" class="banner" hidden></div>
+
+    <section class="card" id="scan-card">
+      <div class="row section-head">
+        <h2>1 · Kurs scannen</h2>
+        <span class="muted small" id="scan-status">Bereit</span>
+        <span class="grow"></span>
+        <button id="btn-scan" class="primary">Scan starten</button>
+        <button id="btn-scan-abort" hidden>Abbrechen</button>
+      </div>
+      <div class="row toggles" id="scan-toggles">
+        <label class="toggle"><input type="checkbox" data-opt="files" checked> Dateien</label>
+        <label class="toggle"><input type="checkbox" data-opt="learningModules" checked> Lernmodule (Text + Anhänge)</label>
+        <label class="toggle"><input type="checkbox" data-opt="exercises" checked> Übungen</label>
+        <label class="toggle"><input type="checkbox" data-opt="sessions" checked> Sitzungen</label>
+        <label class="toggle"><input type="checkbox" data-opt="pages" checked> Inhaltsseiten</label>
+        <label class="toggle"><input type="checkbox" data-opt="wiki" checked> Wikis</label>
+        <label class="toggle"><input type="checkbox" data-opt="glossary" checked> Glossare</label>
+        <label class="toggle"><input type="checkbox" data-opt="weblinks" checked> Weblinks &amp; YouTube</label>
+        <label class="toggle"><input type="checkbox" data-opt="forum"> Foren</label>
+        <label class="toggle"><input type="checkbox" data-opt="media"> Audio/Video-Dateien</label>
+        <label class="toggle"><input type="checkbox" data-opt="courseInfo" checked> Kurs-Info-Seite</label>
+      </div>
+      <div class="progress" id="scan-progress"><div></div></div>
+      <div class="row stats" id="scan-stats" hidden>
+        <span class="pill">📁 <b id="st-containers">0</b> Container</span>
+        <span class="pill">📄 <b id="st-files">0</b> Dateien</span>
+        <span class="pill">📝 <b id="st-texts">0</b> Texte</span>
+        <span class="pill">🔗 <b id="st-links">0</b> Links</span>
+        <span class="pill warn" id="st-skipped-pill">⏭ <b id="st-skipped">0</b> übersprungen</span>
+        <span class="pill err" id="st-errors-pill" hidden>⚠ <b id="st-errors">0</b> Fehler</span>
+        <span class="grow"></span>
+        <button class="small" id="btn-select-all">Alle</button>
+        <button class="small" id="btn-select-none">Keine</button>
+        <button class="small" id="btn-select-new" title="Nur Objekte, die noch nicht in NotebookLM sind">Nur Neues</button>
+      </div>
+      <div id="tree" class="tree" hidden></div>
+      <div class="log" id="scan-log" hidden></div>
+    </section>
+
+    <section class="card" id="target-card" hidden>
+      <div class="row section-head">
+        <h2>2 · Ziel &amp; Export</h2>
+        <span class="muted small" id="export-status"></span>
+        <span class="grow"></span>
+        <button id="btn-export" class="primary" disabled>Export starten</button>
+        <button id="btn-export-abort" hidden>Abbrechen</button>
+      </div>
+
+      <div class="grid2">
+        <div class="stack">
+          <h3>Notebook</h3>
+          <label class="toggle"><input type="radio" name="target" value="auto" id="target-auto"> Zuletzt für diesen Kurs verwendet: <b id="target-auto-title" class="muted">–</b></label>
+          <label class="toggle"><input type="radio" name="target" value="new" checked> Neues Notebook</label>
+          <input type="text" id="target-title" placeholder="Titel des Notebooks">
+          <label class="toggle"><input type="radio" name="target" value="existing"> Vorhandenes Notebook</label>
+          <select id="target-existing"><option value="">Lade Notebooks …</option></select>
+        </div>
+        <div class="stack">
+          <h3>Optionen</h3>
+          <label class="toggle"><input type="checkbox" id="opt-overview" checked> Kursstruktur als eigene Quelle anlegen</label>
+          <label class="toggle"><input type="checkbox" id="opt-wait" checked> Auf Verarbeitung in NotebookLM warten</label>
+          <label class="toggle"><input type="checkbox" id="opt-zip"> Zusätzlich als ZIP herunterladen</label>
+          <label class="toggle"><input type="checkbox" id="opt-drive-mirror"> Nach Google Drive spiegeln <span class="muted small" id="drive-hint"></span></label>
+          <label class="toggle"><input type="checkbox" id="opt-drive-source"> Drive-Dateien als Quellen verknüpfen (pptx/docx/xlsx → Slides/Docs/Sheets, syncbar)</label>
+        </div>
+      </div>
+
+      <div class="plan muted small" id="plan-summary"></div>
+      <div class="progress" id="export-progress"><div></div></div>
+      <div class="log" id="export-log" hidden></div>
+    </section>
+
+    <section class="card" id="result-card" hidden>
+      <div class="row section-head">
+        <h2>3 · Ergebnis</h2>
+        <span class="grow"></span>
+        <button id="btn-zip" hidden>ZIP speichern</button>
+        <button id="btn-rescan">Erneut scannen (Sync)</button>
+      </div>
+      <div id="result-body" class="stack"></div>
+    </section>
+  </main>
+
+  <script src="../lib/jszip.min.js"></script>
+  <script type="module" src="export.js"></script>
+</body>
+</html>

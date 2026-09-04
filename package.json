@@ -5,7 +5,7 @@
   "description": "Chrome extension: export complete FAU StudOn courses into Google NotebookLM (direct upload, Google Drive mirror, ZIP fallback).",
   "type": "module",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {
