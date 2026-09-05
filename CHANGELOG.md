@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 – 2026-09-05
 
 - **Dubletten-Schutz gegen das echte Notebook:** Vor jedem Export wird die Quellenliste des Ziel-Notebooks geladen.
   Quellen, die dort liegen, aber lokal unbekannt sind (Reset, anderer Rechner, anderes Notebook), werden per Titel
