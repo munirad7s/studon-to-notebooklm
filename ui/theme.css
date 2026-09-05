@@ -51,6 +51,9 @@ h1 { font-size: 20px; line-height: 26px; }
 h2 { font-size: 15px; line-height: 20px; }
 h3 { font-size: 13px; line-height: 18px; }
 
+/* Das hidden-Attribut muss auch gegen display-Regeln von Buttons gewinnen (Abbrechen, Dubletten-Button). */
+[hidden] { display: none !important; }
+
 button, .btn {
   font: inherit;
   font-size: 13px;

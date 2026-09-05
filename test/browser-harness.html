@@ -145,7 +145,14 @@
           return new Response(batch(rpc, [[null, ids, 'Harness']]));
         }
         if (rpc === 'izAoDd' || rpc === 'ozz5Z') {
-          return new Response(batch(rpc, [[[[nextSource()], 'Quelle']]]));
+          // Wie das echte NotebookLM: eine Antwortzeile pro angefragter Quelle (Links kommen gebuendelt).
+          let count = 1;
+          try {
+            const freq = JSON.parse(new URLSearchParams(init && init.body).get('f.req'));
+            const params = JSON.parse(freq[0][0][1]);
+            if (Array.isArray(params[0])) count = Math.max(1, params[0].length);
+          } catch { /* Einzelquelle */ }
+          return new Response(batch(rpc, [Array.from({ length: count }, () => [[nextSource()], 'Quelle'])]));
         }
         if (rpc === 'o4cbdc') return new Response(batch(rpc, [[[nextSource()]]]));
         return new Response(batch(rpc, []));

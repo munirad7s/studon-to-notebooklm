@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NotebookLMClient, NotLoggedInError, RpcError, parseBatchResponse, extractRpcResult, parseSourceList, SOURCE_STATUS } from '../lib/nlm-client.js';
+import { NotebookLMClient, NotLoggedInError, RpcError, parseBatchResponse, extractRpcResult, parseSourceList, parseSourceEntry, SOURCE_STATUS, SOURCE_TYPE } from '../lib/nlm-client.js';
 
 const HOME = 'https://notebook.google.com/';
 const HOME_HTML = '<html><script>WIZ_global_data = {"SNlM0e":"AFvR:123","cfb2h":"boq_labs_2026","FdrFJe":"-12345","oPEP7c":"munir@example.com"};</script></html>';
@@ -177,4 +177,30 @@ test('rpc re-initialises tokens once on auth error code 16', async () => {
 test('parseSourceList tolerates unexpected shapes', () => {
   assert.deepEqual(parseSourceList(null), { id: null, title: '', sources: [] });
   assert.deepEqual(parseSourceList([['T', 'garbage', 'id']]), { id: 'id', title: 'T', sources: [] });
+});
+
+test('parseSourceEntry liest die URL von Web- (meta[7]) und YouTube-Quellen (meta[5], live beobachtet)', () => {
+  const yt = [['s-yt'], 'Minority Report Computer  Scene', [null, 127, [1, 2], ['x', [1, 2]], 9, ['https://www.youtube.com/watch?v=33Raqx9sFbo', '33Raqx9sFbo', 'Smartass1813'], 1, null, 150], [null, 2]];
+  const web = [['s-web'], 'IxDF', [null, null, null, null, 5, null, null, ['https://www.interaction-design.org/literature']], [null, 2]];
+  const pdf = [['s-pdf'], 'Folien.pdf', [null, 157, [1, 2], ['y', [1, 2]], 3, null, 1, null, 11425], [null, 2]];
+  const list = parseSourceList([['HCI', [yt, web, pdf], 'nb-1']]);
+  assert.equal(list.sources[0].url, 'https://www.youtube.com/watch?v=33Raqx9sFbo');
+  assert.equal(list.sources[0].type, SOURCE_TYPE.YOUTUBE);
+  assert.equal(list.sources[1].url, 'https://www.interaction-design.org/literature');
+  assert.equal(list.sources[2].url, null);
+  assert.equal(parseSourceEntry(['garbage']), null);
+});
+
+test('getSource ruft hizoJc auf und liefert Titel, Typ und URL', async () => {
+  const detail = [[['s-yt'], 'Minority Report Computer  Scene', [null, 127, [1, 2], ['x', [1, 2]], 9, ['https://www.youtube.com/watch?v=33Raqx9sFbo', '33Raqx9sFbo', 'Smartass1813'], 1], [null, 2]], null, null, [[]]];
+  let body = '';
+  const fetch = makeFetch([
+    loginRedirect,
+    [/rpcids=hizoJc/, (url, init) => { body = init.body; return { ok: true, status: 200, url, text: async () => wrb('hizoJc', detail) }; }],
+  ]);
+  const c = new NotebookLMClient({ fetch });
+  const src = await c.getSource('s-yt');
+  assert.equal(src.url, 'https://www.youtube.com/watch?v=33Raqx9sFbo');
+  assert.equal(src.type, 9);
+  assert.match(decodeURIComponent(body), /hizoJc.*s-yt.*\[2\],\[2\]/);
 });

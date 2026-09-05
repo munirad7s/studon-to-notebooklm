@@ -37,7 +37,7 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
      als Video hochgeladen: NotebookLM nimmt 200 MB pro Datei und wertet ohnehin nur den Ton aus. Die Extension löst
      die Tonspur ohne Neukodierung heraus (`.m4a`, typisch 60–90 MB pro 90 Minuten) und lädt diese hoch – NotebookLM
      transkribiert sie selbst. Abschaltbar unter „Videos nur als Tonspur hochladen“.
-4. **Sync** – Die Extension merkt sich pro Kurs, was schon in welchem Notebook liegt. Der nächste Lauf lädt nur Neues nach.
+4. **Sync** – Die Extension merkt sich pro Kurs, was schon in welchem Notebook liegt, und gleicht das vor jedem Export mit der echten Quellenliste des Notebooks ab. Der nächste Lauf lädt nur Neues nach – auch nach einem Reset, auf einem anderen Rechner oder wenn du in NotebookLM Quellen gelöscht hast. Doppelte Quellen im Notebook werden gemeldet und lassen sich per Klick entfernen.
 
 ## Installation
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Dubletten-Schutz gegen das echte Notebook:** Vor jedem Export wird die Quellenliste des Ziel-Notebooks geladen.
+  Quellen, die dort liegen, aber lokal unbekannt sind (Reset, anderer Rechner, anderes Notebook), werden per Titel
+  bzw. URL dem Kursobjekt zugeordnet statt erneut hochgeladen; lokal vermerkte Quellen, die im Notebook fehlen
+  (in NotebookLM gelöscht), werden neu hochgeladen. Gleichlautende Quellen im Notebook werden gemeldet und lassen
+  sich mit einem Klick (nach Rückfrage) entfernen.
+- **Zustand gilt pro Notebook:** Derselbe Kurs in ein neues oder anderes Notebook bekommt alle Quellen; zurück im
+  alten Notebook wird nichts doppelt angelegt. Folge-Notebooks „(2)“, „(3)“ bilden mit ihrem Ursprung eine Kette;
+  nachgeladen wird ins letzte Glied, gezählt wird pro Kette.
+- Lange Texte (mehrere Teile) und ZIP-Inhalte werden vollständig vermerkt und beim Ersetzen vollständig gelöscht
+  (vorher blieben Teile bzw. entpackte Dateien als Dubletten stehen).
+- Ist das bisherige Notebook gelöscht, legt „Zuletzt verwendet“ ein neues an statt fehlzuschlagen.
+
 ## 2.0.0 – 2026-09-04
 
 Vollständiger Neubau. Die 1.x-Version lud nur ein ZIP herunter; jetzt landet der Kurs direkt in NotebookLM.

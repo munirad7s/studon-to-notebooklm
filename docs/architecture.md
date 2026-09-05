@@ -21,9 +21,18 @@ background/service_worker.js       │  │   └ lib/drive-client.js ── Dri
 ## Datenfluss
 
 1. **Scan** (`StudOnCrawler.scan`) → Baum aus `container | file | text | link | skipped`-Knoten; jede Fehlerquelle wird am Knoten notiert, nur eine abgelaufene Session bricht ab.
-2. **Plan** (`planExport`) → Jobs (file/text/link/overview) minus bereits exportierte Objekte (`state.items[key]`, Signatur aus Größe + Änderungsdatum).
-3. **Run** (`Exporter.run`) → Notebook sicherstellen → Jobs sequentiell (Links gebündelt zu 10) → Zustand nach jedem Job persistieren → optional auf Verarbeitung warten → optional ZIP.
-4. **Zustand** pro Kurs: `course:<ref_id>` = `{ notebooks[], primaryNotebookId, items{ key → sourceId, notebookId, signature } }`.
+2. **Abgleich** (`reconcileNotebook`) → echte Quellenliste der Ziel-Kette laden (`rLM1Ne`) und mit `state.items` abgleichen:
+   lokal vermerkte Quellen, die im Notebook fehlen → Zuordnung gelöscht (werden neu geplant); unbekannte Quellen im
+   Notebook, die zu einem Kursobjekt passen → übernommen (Datei/Text per Titel, Link per URL, Datei ohne Endung per
+   Namensstamm). Gleichlautende Titel im selben Notebook werden als Dubletten gemeldet (Löschen nur per Klick).
+3. **Plan** (`planExport`) → Jobs (file/text/link/overview) minus Objekte, die laut abgeglichenem Zustand in der
+   Ziel-Kette liegen (Signatur aus Größe + Änderungsdatum entscheidet über Ersetzen). Zustand anderer Notebooks zählt nicht.
+4. **Run** (`Exporter.run`) → Kette wählen (Upload ins letzte Glied) → Abgleich erneut, Plan neu rechnen → Jobs sequentiell
+   (Links gebündelt zu 10) → Zustand nach jedem Job persistieren → optional auf Verarbeitung warten → optional ZIP.
+5. **Zustand** pro Kurs: `course:<ref_id>` = `{ notebooks[{id,title,group}], primaryNotebookId, items{ key → sourceIds[], notebookId, signature, history{nbId → ids} } }`.
+   `group` fasst ein Notebook mit seinen Folge-Notebooks „(2)“, „(3)“ … zu einer Kette zusammen; `history` merkt sich die
+   Quellen desselben Objekts in anderen Notebooks (Wechsel A → B → A ohne Dubletten, auch bei ZIP-Inhalten).
+   Der Zustand ist ein Cache – das Notebook ist die Wahrheit.
 
 ## Schlüssel (idempotenter Sync)
 

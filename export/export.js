@@ -1,7 +1,7 @@
 import { StudOnCrawler, SessionExpiredError, flatten } from '../lib/crawler.js';
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { DriveClient, buildAuthUrl, parseTokenFromRedirect } from '../lib/drive-client.js';
-import { planExport, Exporter, itemKey } from '../lib/exporter.js';
+import { planExport, Exporter, itemKey, reconcileNotebook, deleteDuplicateSources, targetChain, isPresent } from '../lib/exporter.js';
 import { extractAudioBlob } from '../lib/audio-extract.js';
 import { getSettings, saveSettings, getCourseState, saveCourseState } from '../lib/storage.js';
 import { typeLabel, formatBytes, gotoUrl, repoUrl } from '../lib/ilias.js';
@@ -37,6 +37,8 @@ const ui = {
   plan: null,
   result: null,
   drive: null,
+  recon: null,       // Ergebnis des Live-Abgleichs mit dem Ziel-Notebook (reconcileNotebook)
+  reconToken: 0,
 };
 
 function log(target, message, cls = '') {
@@ -143,7 +145,7 @@ async function applyLaunch(connected) {
   await runScan();
   if (ui.state !== 'scanned') return;
   if (!ui.plan || !ui.plan.jobs.length) {
-    banner('Nichts zu exportieren - alles ist bereits in NotebookLM oder abgewählt.', 'info');
+    banner('Nichts zu exportieren - alles liegt bereits im Notebook oder ist abgewählt.', 'info');
     return;
   }
   await runExport();
@@ -228,6 +230,7 @@ async function runScan() {
     ui.state = 'scanned';
     updatePlanSummary();
     $('target-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    await refreshReconcile();
   } catch (err) {
     ui.state = 'idle';
     setProgress('scan-progress', 0);
@@ -310,11 +313,13 @@ function renderTree() {
     meta.className = 'meta';
     meta.textContent = nodeMeta(node);
     row.append(caret, cb, icon, title, meta);
-    if (isLeaf && exported[itemKey(node)] && exported[itemKey(node)].sourceId) {
-      const b = document.createElement('span');
-      b.className = 'badge done';
-      b.textContent = 'in NotebookLM';
-      row.appendChild(b);
+    let done = null;
+    if (isLeaf) {
+      done = document.createElement('span');
+      done.className = 'badge done';
+      done.textContent = 'im Notebook';
+      done.hidden = true;
+      row.appendChild(done);
     }
     const status = document.createElement('span');
     status.className = 'badge';
@@ -332,7 +337,7 @@ function renderTree() {
       for (const c of node.children) ul.appendChild(build(c));
       li.appendChild(ul);
     }
-    ui.nodes.set(node.id, { node, li, cb, status });
+    ui.nodes.set(node.id, { node, li, cb, status, done });
     return li;
   };
 
@@ -340,6 +345,7 @@ function renderTree() {
   for (const c of ui.tree.children) ul.appendChild(build(c));
   root.appendChild(ul);
   root.hidden = false;
+  refreshBadges();
 }
 
 function syncParents(li) {
@@ -367,11 +373,11 @@ function setAll(checked) {
 
 function selectNew() {
   const exported = ui.courseState.items || {};
+  const chain = currentChain();
   const leaves = [];
   for (const [, entry] of ui.nodes) {
     if (entry.cb.disabled || entry.node.kind === 'container') continue;
-    const done = exported[itemKey(entry.node)] && exported[itemKey(entry.node)].sourceId;
-    entry.cb.checked = !done;
+    entry.cb.checked = !isPresent(exported[itemKey(entry.node)], chain);
     leaves.push(entry.li);
   }
   for (const li of leaves) syncParents(li);
@@ -393,13 +399,121 @@ function exportSettingsFromUi() {
 function updatePlanSummary() {
   if (!ui.tree) return;
   const settings = exportSettingsFromUi();
-  ui.plan = planExport({ tree: ui.tree, selectedIds: selectedIds(), state: ui.courseState, settings });
+  ui.plan = planExport({ tree: ui.tree, selectedIds: selectedIds(), state: ui.courseState, settings, notebookIds: currentChain() });
   const c = ui.plan.counts;
   const skippedReasons = {};
   for (const s of ui.plan.skipped) skippedReasons[s.reason] = (skippedReasons[s.reason] || 0) + 1;
   const reasons = Object.entries(skippedReasons).map(([r, n]) => `${n}× ${r}`).join(', ');
   $('plan-summary').textContent = `Geplant: ${c.files} Dateien${c.audio ? ` (davon ${c.audio} Videos als Tonspur)` : ''}, ${c.texts} Texte, ${c.links} Links${settings.overviewSource ? ', 1 Kursstruktur' : ''}` + (reasons ? ` · übersprungen: ${reasons}` : '');
   $('btn-export').disabled = ui.plan.jobs.length === 0 || !ui.nlm || !ui.nlm.at || ui.state === 'exporting';
+}
+
+/* ---------- Ziel & Live-Abgleich ---------- */
+
+function currentTarget() {
+  const checked = document.querySelector('input[name="target"]:checked');
+  const mode = checked ? checked.value : 'new';
+  const target = { mode, title: $('target-title').value.trim() || (ui.tree ? ui.tree.title : '') };
+  if (mode === 'existing') {
+    target.notebookId = $('target-existing').value;
+    const nb = ui.notebooks.find((n) => n.id === target.notebookId);
+    if (nb) target.title = nb.title;
+  }
+  return target;
+}
+
+/** Notebook-Kette des aktuell gewählten Ziels (leer bei „Neues Notebook“). */
+function currentChain() {
+  if (ui.recon) return ui.recon.notebookIds;
+  return targetChain(ui.courseState, currentTarget());
+}
+
+/**
+ * Gleicht den Kurszustand mit der echten Quellenliste des Ziel-Notebooks ab (siehe lib/exporter.js).
+ * Läuft nach dem Scan, bei jedem Zielwechsel und nach dem Export; der Export selbst wiederholt ihn.
+ */
+async function refreshReconcile() {
+  const token = ++ui.reconToken;
+  ui.recon = null;
+  if (!ui.tree || !ui.nlm || !ui.nlm.at) { renderRecon(); return; }
+  const chain = targetChain(ui.courseState, currentTarget());
+  if (!chain.length) { renderRecon(); return; }
+  $('recon-text').textContent = 'Gleiche mit dem Notebook ab …';
+  $('recon-summary').hidden = false;
+  $('btn-dedupe').hidden = true;
+  try {
+    const rec = await reconcileNotebook({ nlm: ui.nlm, state: ui.courseState, tree: ui.tree, notebookIds: chain, settings: exportSettingsFromUi(), log: (m) => log('scan-log', m) });
+    if (token !== ui.reconToken) return;
+    await saveCourseState(ui.courseState);
+    ui.recon = rec;
+  } catch (err) {
+    if (token !== ui.reconToken) return;
+    ui.recon = { notebookIds: chain, error: err.message, duplicates: [], total: 0, adopted: 0, missing: 0 };
+  }
+  refreshBadges();
+  renderRecon();
+}
+
+function renderRecon() {
+  const el = $('recon-summary');
+  const btn = $('btn-dedupe');
+  const r = ui.recon;
+  if (!r) {
+    el.hidden = true;
+    btn.hidden = true;
+    updatePlanSummary();
+    return;
+  }
+  if (r.error) {
+    $('recon-text').textContent = `Abgleich mit dem Notebook fehlgeschlagen: ${r.error}`;
+    el.hidden = false;
+    btn.hidden = true;
+    updatePlanSummary();
+    return;
+  }
+  const dups = r.duplicates.reduce((n, g) => n + g.remove.length, 0);
+  const parts = [`${r.total} Quellen im Notebook`];
+  if (r.adopted) parts.push(`${r.adopted} dem Kurs zugeordnet`);
+  if (r.missing) parts.push(`${r.missing} lokal vermerkte fehlen dort und werden neu hochgeladen`);
+  if (dups) parts.push(`${dups} doppelte`);
+  $('recon-text').textContent = `Abgleich: ${parts.join(', ')}.`;
+  el.hidden = false;
+  btn.hidden = !dups;
+  btn.textContent = `${dups} doppelte Quellen im Notebook löschen`;
+  updatePlanSummary();
+}
+
+/** „im Notebook“-Badges nach dem Zustand für die aktuelle Ziel-Kette setzen. */
+function refreshBadges() {
+  if (!ui.courseState) return;
+  const items = ui.courseState.items || {};
+  const chain = currentChain();
+  for (const [, entry] of ui.nodes) {
+    if (!entry.done) continue;
+    entry.done.hidden = !isPresent(items[itemKey(entry.node)], chain);
+    // Nach dem Lauf sagt das Status-Badge dasselbe wie „im Notebook“ – nur eines zeigen.
+    if (!entry.done.hidden && entry.status.classList.contains('done')) entry.status.hidden = true;
+  }
+}
+
+async function removeDuplicates() {
+  const r = ui.recon;
+  if (!r || !r.duplicates.length || !ui.nlm) return;
+  const n = r.duplicates.reduce((s, g) => s + g.remove.length, 0);
+  const sample = r.duplicates.slice(0, 6).map((g) => `• ${g.title} (${g.remove.length}× zu viel)`).join('\n');
+  const more = r.duplicates.length > 6 ? `\n• … und ${r.duplicates.length - 6} weitere` : '';
+  if (!window.confirm(`${n} doppelte Quellen aus dem Notebook löschen? Von jeder Gruppe bleibt eine Quelle erhalten.\n\n${sample}${more}`)) return;
+  $('btn-dedupe').disabled = true;
+  try {
+    const deleted = await deleteDuplicateSources(ui.nlm, r.duplicates, { live: r.live });
+    log('export-log', `${deleted} doppelte Quellen aus dem Notebook gelöscht`, 'ok');
+    banner(`${deleted} doppelte Quellen gelöscht.`, 'info');
+  } catch (err) {
+    banner(`Löschen fehlgeschlagen: ${err.message}`, 'error');
+  } finally {
+    $('btn-dedupe').disabled = false;
+  }
+  await refreshReconcile();
 }
 
 /* ---------- drive ---------- */
@@ -436,13 +550,14 @@ async function runExport() {
   const settings = exportSettingsFromUi();
   await saveSettings({ export: { overviewSource: settings.overviewSource, waitForProcessing: settings.waitForProcessing, zip: settings.zip, videoAsAudio: settings.videoAsAudio, driveMirror: settings.driveMirror, driveAsSource: settings.driveAsSource } });
 
-  const mode = document.querySelector('input[name="target"]:checked').value;
-  const target = { mode, title: $('target-title').value.trim() || ui.tree.title };
-  if (mode === 'existing') {
-    target.notebookId = $('target-existing').value;
-    const nb = ui.notebooks.find((n) => n.id === target.notebookId);
-    target.title = nb ? nb.title : target.title;
-    if (!target.notebookId) { banner('Bitte ein vorhandenes Notebook auswählen.', 'error'); ui.state = 'scanned'; $('btn-export').disabled = false; return; }
+  const target = currentTarget();
+  if (target.mode === 'existing' && !target.notebookId) {
+    banner('Bitte ein vorhandenes Notebook auswählen.', 'error');
+    ui.state = 'scanned';
+    $('btn-export').disabled = false;
+    $('btn-export-abort').hidden = true;
+    $('btn-scan').disabled = false;
+    return;
   }
 
   if (settings.driveMirror || settings.driveAsSource) {
@@ -478,7 +593,7 @@ async function runExport() {
       if (phase === 'processing') setProgress('export-progress', 0.98);
       const keys = batchKeys || (jobKey ? [jobKey] : []);
       for (const key of keys) {
-        const entry = keyToNode.get(key.replace(/#\d+$/, ''));
+        const entry = keyToNode.get(key);
         if (!entry) continue;
         entry.status.hidden = false;
         if (status === 'running') { entry.status.textContent = 'läuft'; entry.status.className = 'badge run'; }
@@ -494,8 +609,16 @@ async function runExport() {
     $('export-status').textContent = ui.result.aborted ? 'Export abgebrochen' : 'Export abgeschlossen';
     renderResult();
     ui.courseState = await getCourseState(course.refId);
-    renderTree();
-    updatePlanSummary();
+    // Nach dem Export ist dieses Notebook das „zuletzt verwendete“: ein weiterer Klick ergänzt dort,
+    // statt mit „Neues Notebook“ noch eines anzulegen.
+    if (ui.courseState.primaryNotebookId) {
+      const nb = ui.courseState.notebooks.find((n) => n.id === ui.courseState.primaryNotebookId);
+      $('target-auto-title').textContent = nb ? nb.title : ui.courseState.primaryNotebookId;
+      $('target-auto').disabled = false;
+      $('target-auto').checked = true;
+    }
+    refreshBadges();
+    await refreshReconcile();
   } catch (err) {
     log('export-log', err.message, 'err');
     if (err instanceof NotLoggedInError) banner(err.message, 'error', { href: 'https://notebooklm.google.com/', text: 'NotebookLM öffnen' });
@@ -532,8 +655,12 @@ function renderResult() {
   dl.className = 'kv';
   const rows = [
     ['Quellen hinzugefügt', String(r.added)],
+    ['Bereits im Notebook (übersprungen)', String(r.present || 0)],
     ['Fehler', String(r.errors.length)],
   ];
+  if (r.reconcile && r.reconcile.duplicates.length) {
+    rows.push(['Doppelte Quellen im Notebook', `${r.reconcile.duplicates.reduce((n, g) => n + g.remove.length, 0)} – siehe Abgleich oben`]);
+  }
   if (Object.keys(r.statuses).length) rows.push(['Verarbeitung', `${ready} fertig${failed ? `, ${failed} fehlgeschlagen` : ''}${pending ? `, ${pending} noch in Arbeit` : ''}`]);
   for (const [k, v] of rows) {
     const dt = document.createElement('dt');
@@ -577,6 +704,8 @@ $('btn-rescan').addEventListener('click', runScan);
 $('btn-select-all').addEventListener('click', () => setAll(true));
 $('btn-select-none').addEventListener('click', () => setAll(false));
 $('btn-select-new').addEventListener('click', selectNew);
-for (const el of document.querySelectorAll('#target-card input, #target-card select')) el.addEventListener('change', updatePlanSummary);
+$('btn-dedupe').addEventListener('click', removeDuplicates);
+// Ziel oder Optionen geändert → Abgleich mit dem (neuen) Ziel-Notebook, dann Plan.
+for (const el of document.querySelectorAll('#target-card input, #target-card select')) el.addEventListener('change', () => { refreshReconcile(); });
 
 init();

@@ -57,7 +57,7 @@ die Quelle ist oft angekommen (das CLI nennt das „reconcile“).
 |---|---|---|
 | Notebooks auflisten | `wXbhsf` | `[null, 1, null, [2]]` → `result[0]` = Liste `[title, sources[], id, emoji, null, meta]` |
 | Notebook anlegen | `CCqFvf` | `[title, null, null, [2], [1,null,null,null,null,null,null,null,null,null,[1]]]` → `result[2]` = id |
-| Notebook lesen | `rLM1Ne` | `[id, null, [2], null, 0]` → `result[0][1]` = sources: `[[id], title, meta, [null, status]]` |
+| Notebook lesen | `rLM1Ne` | `[id, null, [2], null, 0]` → `result[0][1]` = sources: `[[id], title, meta, [null, status]]`; `meta[4]` = Typ (3 pdf, 4 Text, 5 Web, 8 generierter Text, 9 YouTube, 10 Audio, 11 Upload), `meta[7][0]` = URL bei Webseiten, **`meta[5]` = `[url, videoId, channel]` bei YouTube** (live 2026-09-05; die `nlm`-CLI liest dort nichts und meldet `url: null`) |
 | Notebook umbenennen | `s0tc2d` | `[id, [[null,null,null,[null,title]]]]` |
 | Notebook löschen | `WWINqb` | `[[id],[2]]` |
 | Quelle: Text | `izAoDd` | `[[[null,[title,text],null,2,null,null,null,null,null,null,1]], nbId, [2], OPTS]` |
@@ -65,7 +65,7 @@ die Quelle ist oft angekommen (das CLI nennt das „reconcile“).
 | Quelle: URL (v2, Rollout) | `ozz5Z` | `[[[[null,url,627],[null,null,null,null,null,null,null,null,null,[null,null,1]],1]]]`, notebook nur im `source-path` |
 | Quelle: Drive | `izAoDd` | `[[[[docId, mimeType, 1, title],null,null,null,null,null,null,null,null,null,1]], nbId, [2], OPTS]` |
 | Datei registrieren (Upload Schritt 1) | `o4cbdc` | `[[[filename]], nbId, [2], OPTS]` → erster String im Ergebnis = SOURCE_ID |
-| Quelle lesen | `hizoJc` | – |
+| Quelle lesen | `hizoJc` | `[[sourceId], [2], [2]]` → `result[0]` = derselbe Eintrag wie in der Quellenliste (`[[id], title, meta, [null, status]]`), `result[3]` = Volltext-Blöcke |
 | Quelle umbenennen | `b7Wfje` | `[null, [sourceId], [[[newTitle]]]]`, Pfad `/notebook/<id>` |
 | Quellen löschen | `tGMBJ` | `[[[id1],[id2]], [2]]` |
 | Drive-Frische prüfen | `yR9Yof` | `[null, [sourceId], [2]]` |

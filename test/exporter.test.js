@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { DOMParser } from 'linkedom';
 import { StudOnCrawler } from '../lib/crawler.js';
-import { planExport, classifyFile, Exporter, itemKey } from '../lib/exporter.js';
+import { planExport, classifyFile, Exporter, itemKey, reconcileNotebook, deleteDuplicateSources, notebookChain, normUrl, normTitle, PRESENT_REASON } from '../lib/exporter.js';
 import { RpcError } from '../lib/nlm-client.js';
 import * as fx from './fixtures/studon.js';
 
@@ -16,29 +16,45 @@ async function scanFixture() {
   return c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
 }
 
-function fakeNlm({ quotaAfter = Infinity } = {}) {
+/**
+ * Fake-NotebookLM mit echter Quellenbuchhaltung: getNotebook liefert, was hochgeladen
+ * (und nicht gelöscht) wurde – so wie das echte rLM1Ne. Unbekannte Notebooks → Code 5.
+ */
+function fakeNlm({ quotaAfter = Infinity, notebooks = [] } = {}) {
   const calls = [];
   let n = 0;
+  let seq = 0;
   const perNotebook = {};
+  const sources = new Map(); // nbId → [{ id, title, url, status }]
+  for (const nb of notebooks) sources.set(nb.id, (nb.sources || []).map((s) => ({ status: 2, ...s })));
   const count = (nbId) => { perNotebook[nbId] = (perNotebook[nbId] || 0) + 1; if (perNotebook[nbId] > quotaAfter) { perNotebook[nbId] -= 1; throw new RpcError('quota', { code: 8 }); } };
+  const put = (nbId, src) => { if (!sources.has(nbId)) sources.set(nbId, []); sources.get(nbId).push({ status: 2, ...src }); return src; };
   const nlm = {
     calls,
-    notebooks: [],
-    async createNotebook(title) { n += 1; const id = `nb-${n}`; this.notebooks.push({ id, title }); calls.push(['create', title]); return { id, title }; },
+    sources,
+    notebooks: [...notebooks],
+    async createNotebook(title) { n += 1; const id = `nb-${n}`; this.notebooks.push({ id, title }); sources.set(id, []); calls.push(['create', title]); return { id, title }; },
+    async getNotebook(nbId) {
+      calls.push(['get', nbId]);
+      if (!sources.has(nbId)) throw new RpcError('not found', { code: 5 });
+      return { id: nbId, title: '', sources: sources.get(nbId).map((s) => ({ type: null, driveDocId: null, url: null, ...s })) };
+    },
     async uploadFile(nbId, filename, blob) {
       count(nbId);
       calls.push(['upload', nbId, filename, blob.size]);
-      return { id: `src-${filename}`, title: filename };
+      return put(nbId, { id: `src-${filename}-${++seq}`, title: filename });
     },
-    async addTextSource(nbId, title, text) { count(nbId); calls.push(['text', nbId, title, text.length]); return { id: `txt-${title}`, title }; },
-    async addUrlSources(nbId, urls) { calls.push(['urls', nbId, urls]); return urls.map((u) => ({ id: `url-${u}`, title: u, url: u })); },
-    async addDriveSource(nbId, docId, mime, title) { calls.push(['drive-source', nbId, docId, mime, title]); return { id: `drv-${docId}`, title }; },
-    async deleteSources(ids) { calls.push(['delete', ids]); },
+    async addTextSource(nbId, title, text) { count(nbId); calls.push(['text', nbId, title, text.length]); return put(nbId, { id: `txt-${title}-${++seq}`, title }); },
+    async addUrlSources(nbId, urls) { calls.push(['urls', nbId, urls]); return urls.map((u) => put(nbId, { id: `url-${u}-${++seq}`, title: `Seite ${u}`, url: u })); },
+    async addDriveSource(nbId, docId, mime, title) { calls.push(['drive-source', nbId, docId, mime, title]); return put(nbId, { id: `drv-${docId}-${++seq}`, title, driveDocId: docId }); },
+    async deleteSources(ids) { calls.push(['delete', ids]); for (const list of sources.values()) for (const id of ids) { const i = list.findIndex((s) => s.id === id); if (i >= 0) list.splice(i, 1); } },
     async waitForSources(nbId, ids) { calls.push(['wait', nbId, ids.length]); return Object.fromEntries(ids.map((id) => [id, { status: 2 }])); },
     notebookUrl(id) { return `https://notebook.google.com/notebook/${id}`; },
   };
   return nlm;
 }
+
+const uploadsOf = (nlm) => nlm.calls.filter((c) => c[0] === 'upload' || c[0] === 'text' || c[0] === 'urls');
 
 function fileFetch(map) {
   return async (url) => {
@@ -78,7 +94,7 @@ test('planExport lists files, texts, links and the overview; skips exported and 
   const state = { items: { [firstFile.key]: { sourceId: 'x', signature: `${firstFile.node.sizeText || ''}|${firstFile.node.modified || ''}` } } };
   const plan2 = planExport({ tree, state, settings: {} });
   assert.equal(plan2.counts.files, 6);
-  assert.equal(plan2.skipped[0].reason, 'bereits exportiert');
+  assert.equal(plan2.skipped[0].reason, PRESENT_REASON);
 
   const selected = new Set([firstFile.node.id]);
   const plan3 = planExport({ tree, selectedIds: selected, settings: { overviewSource: false } });
@@ -126,7 +142,7 @@ test('Exporter uploads files, texts, links, records state, expands zips and conv
   assert.equal(plan2.counts.texts, 0);
   assert.equal(plan2.counts.links, 0);
   assert.equal(plan2.jobs.length, 1);
-  assert.equal(plan2.jobs[0].replaceSourceId, 'txt-HCI – Kursstruktur');
+  assert.deepEqual(plan2.jobs[0].replaceSourceIds, [state.items.overview.sourceId]);
 });
 
 test('Exporter continues in an overflow notebook when NotebookLM reports quota exhaustion', async () => {
@@ -241,4 +257,235 @@ test('Exporter ohne Extraktor meldet einen klaren Fehler statt 261 MB hochzulade
   assert.equal(result.errors.length, 1);
   assert.match(result.errors[0].error || JSON.stringify(result.errors[0]), /Tonspur-Extraktion nicht verfügbar/);
   assert.equal(nlm.calls.some((c) => c[0] === 'upload'), false);
+});
+
+/* ---------- Dubletten-Schutz: Live-Abgleich mit dem Notebook ---------- */
+
+async function exportedCourse({ settings = {} } = {}) {
+  const tree = await scanFixture();
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const files = {};
+  for (const job of plan.jobs.filter((j) => j.kind === 'file')) files[job.node.downloadUrl] = { name: job.filename.endsWith('.pdf') ? job.filename : `${job.filename}.pdf`, blob: new Blob(['x']) };
+  const nlm = fakeNlm();
+  const state = { refId: fx.COURSE_REF, notebooks: [], primaryNotebookId: null, items: {} };
+  const mk = (st) => new Exporter({ nlm, fetch: fileFetch(files), JSZip, settings: { delayMs: 0, waitForProcessing: false, ...settings }, state: st, sleep: async () => {} });
+  const result = await mk(state).run({ tree, plan, target: { mode: 'new', title: 'HCI' } });
+  assert.equal(result.errors.length, 0, JSON.stringify(result.errors));
+  return { tree, plan, files, nlm, state, mk };
+}
+
+test('Abgleich: ohne lokalen Zustand werden vorhandene Quellen per Titel/URL erkannt – nichts wird doppelt hochgeladen', async () => {
+  const { tree, plan, nlm, mk } = await exportedCourse();
+  const before = uploadsOf(nlm).length;
+  const fresh = { refId: fx.COURSE_REF, notebooks: [], primaryNotebookId: null, items: {} };
+  const r = await mk(fresh).run({ tree, plan, target: { mode: 'existing', notebookId: 'nb-1', title: 'HCI' } });
+  assert.equal(r.errors.length, 0, JSON.stringify(r.errors));
+  assert.equal(uploadsOf(nlm).length, before, 'keine neuen Uploads');
+  assert.equal(r.added, 0);
+  assert.equal(r.present, plan.jobs.length);
+  assert.equal(r.reconcile.adopted, plan.jobs.length);
+  assert.ok(Object.values(fresh.items).every((i) => i.via === 'adopted' && i.notebookId === 'nb-1'));
+  assert.equal(nlm.sources.get('nb-1').length, plan.jobs.length);
+  assert.equal(r.reconcile.duplicates.length, 0);
+});
+
+test('Abgleich: in NotebookLM gelöschte Quelle wird neu hochgeladen, alles andere nicht', async () => {
+  const { tree, plan, nlm, state, mk } = await exportedCourse();
+  const fileKey = Object.keys(state.items).find((k) => k.startsWith('file:'));
+  await nlm.deleteSources([state.items[fileKey].sourceId]);
+  const before = uploadsOf(nlm).length;
+  const r = await mk(state).run({ tree, plan, target: { mode: 'auto' } });
+  assert.equal(r.errors.length, 0, JSON.stringify(r.errors));
+  assert.equal(r.reconcile.missing, 1);
+  assert.equal(r.added, 1);
+  assert.equal(uploadsOf(nlm).length, before + 1);
+  assert.equal(state.items[fileKey].via, 'upload');
+  assert.equal(nlm.sources.get('nb-1').length, plan.jobs.length);
+});
+
+test('Zustand gilt pro Notebook: neues Notebook bekommt alles, Rückkehr ins alte lädt nichts doppelt', async () => {
+  const { tree, plan, nlm, state, mk } = await exportedCourse();
+  const n1 = uploadsOf(nlm).length;
+  const r2 = await mk(state).run({ tree, plan, target: { mode: 'new', title: 'HCI Kopie' } });
+  assert.equal(r2.errors.length, 0, JSON.stringify(r2.errors));
+  assert.equal(r2.added, plan.jobs.length);
+  assert.equal(state.primaryNotebookId, 'nb-2');
+  assert.equal(uploadsOf(nlm).length, n1 * 2);
+  assert.deepEqual(notebookChain(state, 'nb-1'), ['nb-1']);
+  assert.deepEqual(notebookChain(state, 'nb-2'), ['nb-2']);
+
+  const r3 = await mk(state).run({ tree, plan, target: { mode: 'existing', notebookId: 'nb-1' } });
+  assert.equal(r3.added, 0);
+  assert.equal(r3.reconcile.adopted, 0, 'per History wiederhergestellt, nicht per Titel');
+  assert.equal(r3.present, plan.jobs.length);
+  assert.equal(nlm.sources.get('nb-1').length, plan.jobs.length);
+  assert.equal(nlm.sources.get('nb-2').length, plan.jobs.length);
+  assert.ok(Object.values(state.items).every((i) => i.notebookId === 'nb-1' && i.history['nb-2']));
+});
+
+test('Lange Texte: ein Job mit Teilen, alle Teile vermerkt, beim Ersetzen alle gelöscht', async () => {
+  const words = Array.from({ length: 30 }, (_, i) => `w${i}`).join(' ');
+  const content = [words, words, words].join('\n\n');
+  const tree = { id: 'root', kind: 'container', title: 'K', children: [
+    { id: 't1', kind: 'text', type: 'lm', refId: '9', title: 'Skript', filename: 'Skript.md', content, words: 90, path: ['K'], children: [], errors: [] },
+  ], errors: [] };
+  const settings = { overviewSource: false, maxTextWords: 40 };
+  const plan = planExport({ tree, settings });
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.jobs[0].parts.length, 3);
+  const nlm = fakeNlm();
+  const state = { refId: 'k', notebooks: [], primaryNotebookId: null, items: {} };
+  const ex = () => new Exporter({ nlm, fetch: fileFetch({}), settings: { delayMs: 0, waitForProcessing: false, ...settings }, state, sleep: async () => {} });
+  await ex().run({ tree, plan, target: { mode: 'new', title: 'K' } });
+  assert.equal(nlm.calls.filter((c) => c[0] === 'text').length, 3);
+  const key = 'text:lm:9:Skript.md';
+  assert.equal(state.items[key].sourceIds.length, 3);
+
+  const r2 = await ex().run({ tree, plan, target: { mode: 'auto' } });
+  assert.equal(r2.added, 0);
+  assert.equal(r2.present, 1);
+
+  const ids = state.items[key].sourceIds;
+  await nlm.deleteSources([ids[1]]);
+  const r3 = await ex().run({ tree, plan, target: { mode: 'auto' } });
+  assert.equal(r3.added, 3);
+  const del = nlm.calls.filter((c) => c[0] === 'delete').at(-1);
+  assert.deepEqual([...del[1]].sort(), [ids[0], ids[2]].sort());
+  assert.equal(nlm.sources.get('nb-1').length, 3);
+});
+
+test('ZIP: geänderte Datei ersetzt alle entpackten Quellen', async () => {
+  const tree = await scanFixture();
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const zipJob = plan.jobs.find((j) => j.kind === 'file' && /Blatt_02/.test(j.filename));
+  zipJob.node.sizeText = '12 KB';
+  const files = { [zipJob.node.downloadUrl]: { name: 'Blatt_02.zip', blob: await makeZip({ 'a.pdf': 'a', 'b.pdf': 'b' }) } };
+  const nlm = fakeNlm();
+  const state = { refId: fx.COURSE_REF, notebooks: [], primaryNotebookId: null, items: {} };
+  const ex = () => new Exporter({ nlm, fetch: fileFetch(files), JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  const r1 = await ex().run({ tree, plan: { ...plan, jobs: [zipJob], skipped: [] }, target: { mode: 'new', title: 'HCI' } });
+  assert.equal(r1.errors.length, 0, JSON.stringify(r1.errors));
+  const item = state.items[zipJob.key];
+  assert.equal(item.sourceIds.length, 2);
+
+  const r2 = await ex().run({ tree, plan: { ...plan, jobs: [zipJob], skipped: [] }, target: { mode: 'auto' } });
+  assert.equal(r2.added, 0, 'unverändertes ZIP wird nicht erneut hochgeladen');
+
+  zipJob.node.modified = '01. Sep 2026, 10:00';
+  const plan2 = planExport({ tree, state, settings: { overviewSource: false } });
+  const zipJob2 = plan2.jobs.find((j) => j.key === zipJob.key);
+  assert.deepEqual(zipJob2.replaceSourceIds, item.sourceIds);
+  const r3 = await ex().run({ tree, plan: { ...plan2, jobs: [zipJob2], skipped: [] }, target: { mode: 'auto' } });
+  assert.equal(r3.added, 2);
+  const del = nlm.calls.filter((c) => c[0] === 'delete').at(-1);
+  assert.deepEqual(del[1], item.sourceIds);
+  assert.equal(nlm.sources.get('nb-1').length, 2);
+});
+
+test('Dubletten im Notebook erkennen und auf Wunsch entfernen; Dateien ohne Endung per Stamm erkennen', async () => {
+  const nlm = fakeNlm({ notebooks: [{ id: 'nb-x', title: 'HCI', sources: [
+    { id: 's1', title: '02_History.pdf' }, { id: 's2', title: '02_History.pdf' }, { id: 's3', title: '02_History.pdf', status: 1 }, { id: 's4', title: 'Einzeln.pdf' },
+  ] }] });
+  const tree = { id: 'root', kind: 'container', title: 'HCI', children: [
+    { id: 'f1', kind: 'file', type: 'file', refId: '77', title: '02_History', filename: '02_History.pdf', downloadUrl: 'https://studon/f1', sizeText: '1 MB', path: ['HCI'], children: [], errors: [] },
+    { id: 'f2', kind: 'file', type: 'file', refId: '78', title: 'Einzeln', filename: '', downloadUrl: 'https://studon/f2', sizeText: '1 MB', path: ['HCI'], children: [], errors: [] },
+  ], errors: [] };
+  const state = { refId: 'hci', notebooks: [], primaryNotebookId: null, items: {} };
+  const rec = await reconcileNotebook({ nlm, state, tree, notebookIds: ['nb-x'] });
+  assert.equal(rec.adopted, 2);
+  assert.equal(state.items['file:77'].sourceId, 's1');
+  assert.equal(state.items['file:78'].sourceId, 's4');
+  assert.deepEqual(rec.duplicates, [{ title: '02_History.pdf', notebookId: 'nb-x', keep: 's1', remove: ['s2', 's3'] }]);
+
+  const n = await deleteDuplicateSources(nlm, rec.duplicates, { live: rec.live });
+  assert.equal(n, 2);
+  assert.deepEqual(nlm.sources.get('nb-x').map((s) => s.id), ['s1', 's4']);
+  assert.equal(rec.live.duplicates().length, 0);
+
+  const plan = planExport({ tree, state, settings: { overviewSource: false }, notebookIds: ['nb-x'] });
+  assert.equal(plan.jobs.length, 0);
+  assert.equal(plan.counts.present, 2);
+  const other = planExport({ tree, state, settings: { overviewSource: false }, notebookIds: ['nb-y'] });
+  assert.equal(other.jobs.length, 2, 'Zustand eines anderen Notebooks zählt nicht');
+});
+
+test('Overflow-Kette: Abgleich über alle Glieder, Nachladen im letzten', async () => {
+  const tree = await scanFixture();
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const files = {};
+  for (const job of plan.jobs.filter((j) => j.kind === 'file')) files[job.node.downloadUrl] = { name: job.filename.endsWith('.pdf') ? job.filename : `${job.filename}.pdf`, blob: new Blob(['x']) };
+  const countedJobs = plan.jobs.filter((j) => j.kind === 'file' || j.kind === 'text').length;
+  const nlm = fakeNlm({ quotaAfter: Math.ceil(countedJobs / 2) });
+  const state = { refId: fx.COURSE_REF, notebooks: [], primaryNotebookId: null, items: {} };
+  const ex = () => new Exporter({ nlm, fetch: fileFetch(files), JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  const r1 = await ex().run({ tree, plan, target: { mode: 'new', title: 'HCI' } });
+  assert.equal(r1.errors.length, 0, JSON.stringify(r1.errors));
+  assert.deepEqual(notebookChain(state, 'nb-1'), ['nb-1', 'nb-2']);
+  assert.equal(r1.notebooks.length, 2);
+
+  const r2 = await ex().run({ tree, plan, target: { mode: 'auto' } });
+  assert.equal(r2.added, 0);
+  assert.equal(r2.present, plan.jobs.length);
+
+  const inFirst = Object.entries(state.items).find(([k, i]) => k.startsWith('file:') && i.notebookId === 'nb-1');
+  await nlm.deleteSources([inFirst[1].sourceId]);
+  const before = nlm.calls.length;
+  const r3 = await ex().run({ tree, plan, target: { mode: 'existing', notebookId: 'nb-1' } });
+  assert.equal(r3.added, 1);
+  const upload = nlm.calls.slice(before).find((c) => c[0] === 'upload');
+  assert.equal(upload[1], 'nb-2', 'nachgeladen wird ins letzte Glied der Kette');
+  assert.equal(state.items[inFirst[0]].notebookId, 'nb-2');
+});
+
+test('Bisheriges Notebook gelöscht: auto legt ein neues an, existing meldet einen Fehler', async () => {
+  const { tree, plan, nlm, state, mk } = await exportedCourse();
+  nlm.sources.delete('nb-1');
+  const r = await mk(state).run({ tree, plan, target: { mode: 'auto' } });
+  assert.equal(r.errors.length, 0, JSON.stringify(r.errors));
+  assert.equal(state.primaryNotebookId, 'nb-2');
+  assert.equal(r.added, plan.jobs.length);
+  assert.ok(!state.notebooks.some((n) => n.id === 'nb-1'));
+  await assert.rejects(mk(state).run({ tree, plan, target: { mode: 'existing', notebookId: 'nb-1' } }), /nicht \(mehr\) erreichbar/);
+});
+
+test('Abgleich bricht ab, wenn die Quellenliste nicht lesbar ist (statt blind hochzuladen)', async () => {
+  const { tree, plan, nlm, state, mk } = await exportedCourse();
+  nlm.getNotebook = async () => { throw new RpcError('kaputt', { code: 13 }); };
+  const before = uploadsOf(nlm).length;
+  await assert.rejects(mk(state).run({ tree, plan, target: { mode: 'auto' } }), /Quellenliste/);
+  assert.equal(uploadsOf(nlm).length, before);
+});
+
+test('normUrl/normTitle: YouTube-Varianten, Schrägstriche, Groß-/Kleinschreibung', () => {
+  assert.equal(normUrl('https://www.youtube.com/watch?v=abc123&t=5'), 'youtube:abc123');
+  assert.equal(normUrl('https://youtu.be/abc123'), 'youtube:abc123');
+  assert.equal(normUrl('https://www.youtube.com/embed/abc123'), 'youtube:abc123');
+  assert.equal(normUrl('https://Example.com/pfad/'), normUrl('https://example.com/pfad#abschnitt'));
+  assert.equal(normTitle('  Lernmodul –  Analysis '), 'lernmodul – analysis');
+  assert.equal(normTitle('Ana\u0308lysis'), normTitle('An\u00e4lysis'), 'NFC: kombinierende und vorkomponierte Umlaute sind gleich');
+});
+
+test('Links: fehlt die URL in der Quellenliste, wird sie per getSource nachgeschlagen (YouTube) – kein Doppel', async () => {
+  const nlm = fakeNlm({ notebooks: [{ id: 'nb-x', title: 'HCI', sources: [
+    { id: 'yt-1', title: 'Minority Report Computer  Scene', type: 9 },
+    { id: 'web-1', title: 'Interaction Design Foundation', type: 5 },
+    { id: 'pdf-1', title: 'Folien.pdf', type: 3 },
+  ] }] });
+  const detailUrls = { 'yt-1': 'https://www.youtube.com/watch?v=33Raqx9sFbo', 'web-1': 'https://www.interaction-design.org/literature/' };
+  const looked = [];
+  nlm.getSource = async (id) => { looked.push(id); return { id, title: '', type: null, url: detailUrls[id] || null }; };
+  const tree = { id: 'root', kind: 'container', title: 'HCI', children: [
+    { id: 'l1', kind: 'link', title: 'Don Norman Talk', href: 'https://youtu.be/33Raqx9sFbo', isYouTube: true, path: ['HCI'], children: [], errors: [] },
+    { id: 'l2', kind: 'link', title: 'IxDF Literatur', href: 'https://www.interaction-design.org/literature', path: ['HCI'], children: [], errors: [] },
+    { id: 'l3', kind: 'link', title: 'Neu', href: 'https://example.org/neu', path: ['HCI'], children: [], errors: [] },
+  ], errors: [] };
+  const state = { refId: 'hci', notebooks: [], primaryNotebookId: null, items: {} };
+  const rec = await reconcileNotebook({ nlm, state, tree, notebookIds: ['nb-x'] });
+  assert.equal(rec.adopted, 2);
+  assert.deepEqual(looked.sort(), ['web-1', 'yt-1'], 'nur Web-/YouTube-Quellen werden einzeln gelesen, keine PDFs');
+  assert.equal(state.items['link:https://youtu.be/33Raqx9sFbo'].sourceId, 'yt-1');
+  assert.equal(state.items['link:https://www.interaction-design.org/literature'].sourceId, 'web-1');
+  const plan = planExport({ tree, state, settings: { overviewSource: false }, notebookIds: ['nb-x'] });
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.jobs[0].url, 'https://example.org/neu');
 });
