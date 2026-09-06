@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Mediacasts/Seiten, die YouTube- oder fau.tv-Videos als `<video src=…>` einbinden, erzeugten einen Download-Job „watch“, der mit „Failed to fetch“ scheiterte. Solche Videos sind jetzt Links (YouTube-Quelle bzw. fau.tv-Transkript).
+
 ## 2.1.0 – 2026-09-05
 
 - **Dubletten-Schutz gegen das echte Notebook:** Vor jedem Export wird die Quellenliste des Ziel-Notebooks geladen.

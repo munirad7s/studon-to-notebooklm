@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DOMParser } from 'linkedom';
-import { StudOnCrawler, SessionExpiredError, collectItems, flatten, treeToOverview } from '../lib/crawler.js';
+import { StudOnCrawler, SessionExpiredError, collectItems, flatten, treeToOverview, collectMediaLinks, collectExternalLinks } from '../lib/crawler.js';
 import * as fx from './fixtures/studon.js';
 
 function crawler(extra = {}, fetchOpts = {}) {
@@ -261,4 +261,21 @@ test('media=false laesst Videos aus HTML-Lernmodul und xvid aus', async () => {
   assert.equal(xvid.kind, 'skipped');
   const htlm = root.children.find((n) => n.refId === fx.HTLM_REF);
   assert.ok(htlm.children.some((n) => n.kind === 'file'), 'htlm-Video bleibt (Lernmodul-Option), nur Plugin-Videos haengen an media');
+});
+
+test('YouTube/fau.tv in <video src> sind Links, keine Downloads (sonst „watch: Failed to fetch“)', () => {
+  const html = `<div>
+    <video src="https://www.youtube.com/watch?v=abc123def45" title="Vorlesung 3"></video>
+    <video><source src="https://www.fau.tv/clip/id/42516" type="video/mp4"></video>
+    <video><source src="./data/StudOn/mobs/mm_1/PLB_VL1.mp4?il_wac_token=abc" type="video/mp4"></video>
+    <iframe src="https://www.fau.tv/clip/id/777"></iframe>
+  </div>`;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const base = 'https://www.studon.fau.de/studon/ilias.php?x=1';
+  const media = collectMediaLinks(doc, base);
+  assert.deepEqual(media.map((m) => m.title), ['PLB_VL1.mp4'], 'nur die lokale MP4 ist ein Download');
+  const links = collectExternalLinks(doc, base);
+  const yt = links.find((l) => l.isYouTube);
+  assert.ok(yt && yt.href === 'https://www.youtube.com/watch?v=abc123def45' && yt.title === 'Vorlesung 3');
+  assert.deepEqual(links.filter((l) => l.isFauTv).map((l) => l.href).sort(), ['https://www.fau.tv/clip/id/42516', 'https://www.fau.tv/clip/id/777']);
 });
