@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.1 – 2026-09-06
 
 - Mediacasts/Seiten, die YouTube- oder fau.tv-Videos als `<video src=…>` einbinden, erzeugten einen Download-Job „watch“, der mit „Failed to fetch“ scheiterte. Solche Videos sind jetzt Links (YouTube-Quelle bzw. fau.tv-Transkript).
 

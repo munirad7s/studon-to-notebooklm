@@ -1,6 +1,6 @@
 {
   "name": "studon-to-notebooklm",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "description": "Chrome extension: export complete FAU StudOn courses into Google NotebookLM (direct upload, Google Drive mirror, ZIP fallback).",
   "license": "MIT",
