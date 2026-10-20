@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0 – 2026-10-21
+
+- **H5P-Inhalte werden exportiert.** Lernmodule (z. B. vhb-Kurse) bestehen oft fast nur aus H5P-Blöcken; bisher
+  landete davon nur der Platzhalter „Bitte warten Sie, bis der Inhalt geladen werden konnte.“ im Notebook. Der
+  Inhalt wird jetzt direkt aus dem Seitenquelltext gelesen (`il.H5P.initContent`, base64) und an seiner Stelle
+  eingesetzt: Texte, Akkordeons, Course Presentations, Interactive Videos/Books und Selbsttests (Multiple Choice,
+  Richtig/Falsch, Lückentext, Drag the Words, Guess the Answer) jeweils mit Lösung. H5P-Videos kommen als Datei
+  (bzw. Tonspur) dazu, YouTube-Quellen als Link. Gilt für alle Seitentypen (Lernmodul, Inhaltsseite, Wiki …).
+- Lernmodule: jede erste Seite eines Kapitels stand doppelt im Text, weil Kapitel und Seiten getrennt abgerufen
+  wurden. Jetzt werden nur noch Seiten geholt (halb so viele Anfragen).
+
 ## 2.2.0 – 2026-09-22
 
 - FAU.tv unabhängig von StudOn starten: über den Button auf Video- und Serienseiten oder einen eingefügten Link im Erweiterungs-Popup.

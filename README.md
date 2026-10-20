@@ -19,6 +19,7 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
    - Ordner / Gruppen / Sitzungen → rekursiv
    - Dateien → Download-Link (`goto.php?target=file_<ref>_download`)
    - Lernmodule → alle Seiten als ein Markdown-Text + angehängte Dateien + eingebettete YouTube-Videos
+   - **H5P-Inhalte** (Texte, Akkordeons, Präsentationen, Selbsttests mit Lösungen, Videos) – auch ohne dass StudOn sie im Browser rendert
    - Übungen → Aufgabentext + Aufgabendateien
    - Inhaltsseiten, Wikis, Glossare, Foren (optional), Mediacasts (optional)
    - Weblinks / YouTube → als URL-Quellen
