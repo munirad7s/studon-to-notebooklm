@@ -6,8 +6,9 @@
 
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { getSettings } from '../lib/storage.js';
+import { parseFauTvUrl } from '../lib/fautv.js';
 
-const LAUNCH_KEYS = ['ref', 'type', 'title', 'url', 'scan', 'mode', 'notebook', 'nbtitle', 'autostart'];
+const LAUNCH_KEYS = ['source', 'ref', 'type', 'title', 'url', 'scan', 'mode', 'notebook', 'nbtitle', 'autostart'];
 
 function exporterUrl(params) {
   const q = new URLSearchParams();
@@ -16,10 +17,20 @@ function exporterUrl(params) {
 }
 
 async function openExporter(params) {
+  if (params.source === 'fautv') {
+    const parsed = parseFauTvUrl(params.url);
+    if (!parsed) throw new Error('Ungültiger FAU.tv-Link: Bitte ein Video oder eine Vorlesungsreihe öffnen.');
+    params = { ...params, url: parsed.url, ref: `fautv:${parsed.url}` };
+  }
   const target = exporterUrl(params);
   const base = target.split('?')[0];
   const existing = await chrome.tabs.query({ url: `${base}*` });
-  const same = existing.find((t) => t.url && new URL(t.url).searchParams.get('ref') === String(params.ref || ''));
+  const same = existing.find((t) => {
+    if (!t.url) return false;
+    const query = new URL(t.url).searchParams;
+    return query.get('ref') === String(params.ref || '') &&
+      (query.get('source') || 'studon') === (params.source || 'studon');
+  });
   if (same) {
     // Mit neuen Startparametern (Dialog) wird der Tab neu geladen, sonst nur nach vorn geholt.
     const relaunch = params.autostart || params.scan || params.mode;

@@ -25,7 +25,7 @@
 
     <section class="card" id="scan-card">
       <div class="row section-head">
-        <h2>1 · Kurs scannen</h2>
+        <h2 id="scan-heading">1 · Kurs scannen</h2>
         <span class="muted small" id="scan-status">Bereit</span>
         <span class="grow"></span>
         <button id="btn-scan" class="primary">Scan starten</button>
@@ -44,6 +44,11 @@
         <label class="toggle"><input type="checkbox" data-opt="forum"> Foren</label>
         <label class="toggle"><input type="checkbox" data-opt="media" checked> Videos &amp; Audio (Aufzeichnungen, interaktive Videos)</label>
         <label class="toggle"><input type="checkbox" data-opt="courseInfo" checked> Kurs-Info-Seite</label>
+      </div>
+      <div class="stack fautv-input">
+        <label for="fautv-links"><b>FAU.tv-Videos oder Serien hinzufügen</b></label>
+        <textarea id="fautv-links" rows="3" placeholder="https://www.fau.tv/series/…&#10;https://www.fau.tv/clip/id/…" aria-describedby="fautv-hint"></textarea>
+        <span class="muted small" id="fautv-hint">Ein Link pro Zeile. Serien werden in einzelne Vorlesungen aufgelöst. Nach dem Scan kannst du alle oder einzelne Transkripte auswählen. Für geschützte Videos bitte bei FAU.tv anmelden.</span>
       </div>
       <div class="progress" id="scan-progress"><div></div></div>
       <div class="row stats" id="scan-stats" hidden>

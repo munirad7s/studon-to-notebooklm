@@ -100,10 +100,18 @@
       }
 
       if (/fau\.tv/.test(url)) {
+        if (url === 'https://www.fau.tv/series/harness') {
+          return new Response('<main><a href="/clip/id/42516">Lecture one</a><a href="/clip/id/42517">Lecture two</a><a href="/clip/id/42518">No transcript</a><a href="/clip/id/42516">Duplicate</a></main>');
+        }
+        if (/\/clip\/id\/4251[78]$/.test(url)) {
+          const missing = url.endsWith('42518');
+          const { clipPage } = await import('./fixtures/fautv.js');
+          return new Response(clipPage({ withTranscript: !missing }).replaceAll('42516', missing ? '42518' : '42517'));
+        }
         // Fixture-fetch liefert Pseudo-Responses; hier in echte Response-Objekte umsetzen.
         const r = await fauTvFetch(url, init || {});
         const text = await r.text();
-        return Object.assign(new Response(text, { status: r.status, headers: { 'content-type': init && init.method === 'POST' ? 'application/json' : 'text/html' } }), {});
+        return Object.defineProperty(new Response(text, { status: r.status, headers: { 'content-type': init && init.method === 'POST' ? 'application/json' : 'text/html' } }), 'url', { value: r.url || url });
       }
 
       if (url.includes('studon.fau.de')) {
@@ -179,7 +187,9 @@
 
     // Eigene Startparameter der Harness-URL (z. B. autostart=1&mode=existing) werden durchgereicht.
     const own = new URLSearchParams(location.search);
-    if (!own.has('ref')) { own.set('ref', fx.COURSE_REF); own.set('type', 'crs'); own.set('title', 'Harness-Kurs'); }
+    if (own.get('source') === 'fautv' && !own.has('url')) {
+      own.set('url', 'https://www.fau.tv/series/harness'); own.set('title', 'FAU.tv Harness-Serie');
+    } else if (!own.has('ref')) { own.set('ref', fx.COURSE_REF); own.set('type', 'crs'); own.set('title', 'Harness-Kurs'); }
     history.replaceState({}, '', `?${own.toString()}`);
     await import('../export/export.js');
     setTimeout(report, 1500);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clipIdFromUrl, decodeEntities, extractSegments, fetchTranscript, FauTvLoginError, formatDuration,
-  formatTimestamp, isFauTvUrl, parseClipPage, transcriptToMarkdown, TranscriptUnavailableError,
+  formatTimestamp, isFauTvUrl, parseFauTvUrl, resolveFauTvLinks, parseClipPage, transcriptToMarkdown, TranscriptUnavailableError,
 } from '../lib/fautv.js';
 import * as ftv from './fixtures/fautv.js';
 
@@ -85,4 +85,57 @@ test('Zeit- und Dauerformat', () => {
   assert.equal(formatDuration(1163), '19 min');
   assert.equal(formatDuration(5400), '1 h 30 min');
   assert.equal(decodeEntities('a &quot;b&quot; &amp; &#039;c&#039; &lt;d&gt;'), 'a "b" & \'c\' <d>');
+});
+
+
+test('parseFauTvUrl normalizes video and series routes and rejects other hosts/routes', () => {
+  assert.deepEqual(parseFauTvUrl('http://fau.tv/series/course/?page=2#x'), { url: 'https://www.fau.tv/series/course', kind: 'series', id: 'course' });
+  assert.equal(parseFauTvUrl(ftv.FINAL_URL).kind, 'clip');
+  for (const url of ['https://fau.tv.evil/series/course', 'https://evil@fau.tv/series/course', 'ftp://fau.tv/series/course', 'https://fau.tv:8080/series/course', 'https://fau.tv/clip/id/1/extra', 'https://fau.tv/series/%zz']) {
+    assert.equal(parseFauTvUrl(url), null, url);
+  }
+});
+
+test('resolveFauTvLinks resolves mobile/desktop duplicates, titles, pagination and pasted videos', async () => {
+  const series = 'https://www.fau.tv/series/course';
+  const calls = [];
+  const controller = new AbortController();
+  const fetch = async (url, init) => {
+    calls.push(url);
+    assert.equal(init.credentials, 'include');
+    assert.equal(init.signal, controller.signal);
+    return { ok: true, url, text: async () => url.includes('page=2')
+      ? '<li><a href="/series/course/second">Video</a><div class="line-clamp-2">Second lecture</div></li><a href="?page=2">2</a>'
+      : '<li><a href="/series/course/first">preview</a><div class="line-clamp-2 font-bold">First &amp; lecture</div><a href="/series/course/first">preview</a></li><a href="?page=2">2</a><a href="https://evil.test/?page=3">Next</a>' };
+  };
+  const result = await resolveFauTvLinks([series, series, `${series}/first?x=1`, ftv.CLIP_URL], { fetch, signal: controller.signal });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.clips.length, 3);
+  assert.equal(result.clips[0].title, 'First & lecture');
+  assert.equal(result.clips[1].title, 'Second lecture');
+  assert.deepEqual(calls, [series, `${series}?page=2`]);
+});
+
+test('resolveFauTvLinks reports invalid, login, and empty series while retaining valid videos', async () => {
+  const fetch = async (url) => ({ ok: true, url: url.endsWith('/locked') ? 'https://www.fau.tv/login' : url, text: async () => '<h1>No clips</h1>' });
+  const result = await resolveFauTvLinks(['https://evil.test', 'https://www.fau.tv/series/locked', 'https://www.fau.tv/series/empty', ftv.CLIP_URL], { fetch });
+  assert.equal(result.errors.length, 3);
+  assert.match(result.errors[1].message, /Anmeldung/);
+  assert.match(result.errors[2].message, /Keine Videos/);
+  assert.equal(result.clips.length, 1);
+});
+
+test('FAU.tv cancellation propagates and transcript requests carry the signal', async () => {
+  const controller = new AbortController();
+  const fetch = ftv.fakeFauTvFetch();
+  await fetchTranscript(ftv.CLIP_URL, { fetch, signal: controller.signal });
+  assert.ok(fetch.calls.every((call) => call.init.signal === controller.signal));
+  controller.abort();
+  await assert.rejects(resolveFauTvLinks([ftv.CLIP_URL], { fetch, signal: controller.signal }), { name: 'AbortError' });
+});
+
+
+test('fetchTranscript recovers numeric clip ID from metadata for slug inputs', async () => {
+  const result = await fetchTranscript(ftv.FINAL_URL, { fetch: ftv.fakeFauTvFetch() });
+  assert.equal(result.clipId, ftv.CLIP_ID);
 });

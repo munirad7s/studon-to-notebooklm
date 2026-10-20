@@ -41,6 +41,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 20px 22px 60px; display: flex
 .card > .section-head + * { margin-top: 12px; }
 
 .toggles { gap: 8px 16px; margin-bottom: 12px; }
+.fautv-input { margin-bottom: 16px; }
+.fautv-input textarea { width: 100%; min-height: 76px; resize: vertical; }
 .stats { margin: 12px 16px; }
 .stats b { font-weight: 600; color: var(--text); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 12px; }

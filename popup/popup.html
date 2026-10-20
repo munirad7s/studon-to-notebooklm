@@ -19,6 +19,16 @@
     <button class="primary" id="btn-open" disabled>Exporter öffnen</button>
   </section>
 
+  <section class="card">
+    <form id="fautv-form">
+      <label class="label" for="fautv-url">FAU.TV-LINK HINZUFÜGEN</label>
+      <input id="fautv-url" type="url" required placeholder="https://www.fau.tv/series/…" aria-describedby="fautv-help launch-error">
+      <div id="fautv-help" class="muted small">Ein Video oder eine ganze Vorlesungsreihe.</div>
+      <button type="submit" class="primary">Im Exporter öffnen</button>
+    </form>
+  </section>
+  <div id="launch-error" role="alert"></div>
+
   <section class="card" id="recent-card" hidden>
     <div class="label">ZULETZT EXPORTIERT</div>
     <ul id="recent" class="recent"></ul>

@@ -8,3 +8,9 @@ body { width: 340px; padding: 12px; display: flex; flex-direction: column; gap: 
 .recent li { display: flex; flex-direction: column; gap: 1px; }
 .recent li a { font-weight: 600; color: var(--accent-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .foot { text-align: center; }
+
+#fautv-form { display: flex; flex-direction: column; gap: 8px; }
+#fautv-form .label { margin: 0; }
+#fautv-url { width: 100%; box-sizing: border-box; }
+#launch-error { color: var(--danger, #b42318); font-size: 12px; }
+#launch-error:empty { display: none; }

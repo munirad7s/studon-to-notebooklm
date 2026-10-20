@@ -5,6 +5,8 @@ import { planExport, Exporter, itemKey, reconcileNotebook, deleteDuplicateSource
 import { extractAudioBlob } from '../lib/audio-extract.js';
 import { getSettings, saveSettings, getCourseState, saveCourseState } from '../lib/storage.js';
 import { typeLabel, formatBytes, gotoUrl, repoUrl } from '../lib/ilias.js';
+import { parseFauTvUrl } from '../lib/fautv.js';
+import { appendFauTvSources } from '../lib/fautv-import.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -13,7 +15,15 @@ const course = {
   type: params.get('type') || '',
   title: params.get('title') || '',
   url: params.get('url') || '',
+  source: params.get('source') || 'studon',
 };
+const standaloneFauTv = course.source === 'fautv';
+if (standaloneFauTv) {
+  const source = parseFauTvUrl(course.url);
+  course.url = source?.url || '';
+  course.refId = source ? `fautv:${source.url}` : '';
+  course.type = 'fautv';
+}
 
 /** Startparameter aus dem Dialog auf der StudOn-Seite (content/content.js). */
 const launch = {
@@ -39,6 +49,7 @@ const ui = {
   drive: null,
   recon: null,       // Ergebnis des Live-Abgleichs mit dem Ziel-Notebook (reconcileNotebook)
   reconToken: 0,
+  scanController: null,
 };
 
 function log(target, message, cls = '') {
@@ -76,15 +87,23 @@ function setProgress(id, ratio) {
 
 async function init() {
   if (!course.refId) {
-    banner('Keine StudOn-Objekt-ID übergeben. Bitte den Export über den ⚡-Button auf einer StudOn-Kursseite starten.', 'error');
+    banner('Keine gültige Quelle übergeben. Bitte den Export über die Erweiterung auf StudOn oder FAU.tv starten.', 'error');
     $('btn-scan').disabled = true;
     return;
   }
   ui.settings = await getSettings();
   ui.courseState = await getCourseState(course.refId);
-  const title = course.title || ui.courseState.title || `StudOn ${course.refId}`;
+  ui.courseState.source = course.source;
+  ui.courseState.url = course.url;
+  $('fautv-links').value = (ui.courseState.fauTvLinks || []).join('\n');
+  if (standaloneFauTv) {
+    $('scan-heading').textContent = '1 · FAU.tv-Videos & Serien scannen';
+    $('scan-toggles').hidden = true;
+    if (!$('fautv-links').value) $('fautv-links').value = course.url;
+  }
+  const title = course.title || ui.courseState.title || (standaloneFauTv ? 'FAU.tv-Import' : `StudOn ${course.refId}`);
   $('course-title').textContent = title;
-  $('course-kind').textContent = typeLabel(course.type || 'crs');
+  $('course-kind').textContent = standaloneFauTv ? 'FAU.tv' : typeLabel(course.type || 'crs');
   $('course-link').href = course.url || (course.type ? gotoUrl(course.type, course.refId) : repoUrl(course.refId));
   document.title = `${title} → NotebookLM`;
   $('target-title').value = title;
@@ -187,8 +206,17 @@ function scanOptionsFromUi() {
 }
 
 async function runScan() {
-  if (ui.state === 'scanning') return;
+  if (!ui.settings || ui.state === 'scanning' || ui.state === 'exporting') return;
+  const extraLinks = $('fautv-links').value.split(/\s+/).filter(Boolean);
+  const invalid = extraLinks.find((url) => !parseFauTvUrl(url));
+  if (invalid || (standaloneFauTv && !extraLinks.length)) {
+    banner(invalid ? `Kein gültiger FAU.tv-Video- oder Serienlink: ${invalid}` : 'Bitte mindestens einen FAU.tv-Video- oder Serienlink eingeben.', 'error');
+    return;
+  }
   ui.state = 'scanning';
+  ui.scanController = new AbortController();
+  ui.reconToken += 1;
+  $('fautv-links').disabled = true;
   banner('');
   $('btn-scan').disabled = true;
   $('btn-scan-abort').hidden = false;
@@ -217,15 +245,34 @@ async function runScan() {
   });
 
   try {
-    ui.tree = await ui.crawler.scan({ refId: course.refId, type: course.type || null, title: course.title, url: course.url });
+    ui.tree = standaloneFauTv
+      ? { id: 'fautv-root', kind: 'container', type: 'fautv', refId: course.refId, title: course.title || 'FAU.tv-Import', url: course.url, path: [], children: [], errors: [] }
+      : await ui.crawler.scan({ refId: course.refId, type: course.type || null, title: course.title, url: course.url });
+    ui.scanController.signal.throwIfAborted();
+    if (extraLinks.length) {
+      const baseStats = { ...ui.crawler.stats };
+      const combineStats = (stats) => Object.fromEntries(Object.keys(baseStats).map((key) => [key, baseStats[key] + (stats[key] || 0)]));
+      const added = await appendFauTvSources(ui.tree, extraLinks, {
+        fetch: (u, i) => fetch(u, i), signal: ui.scanController.signal,
+        onProgress: ({ message, stats }) => {
+          $('scan-status').textContent = message;
+          log('scan-log', message);
+          updateStats(combineStats(stats));
+        },
+      });
+      ui.crawler.stats = combineStats(added);
+    }
+    ui.scanController.signal.throwIfAborted();
+    ui.courseState.fauTvLinks = extraLinks;
     course.title = course.title || ui.tree.title;
     $('course-title').textContent = ui.tree.title;
     if (!$('target-title').value) $('target-title').value = ui.tree.title;
     ui.courseState.title = ui.tree.title;
+    await saveCourseState(ui.courseState);
     renderTree();
     updateStats(ui.crawler.stats);
     setProgress('scan-progress', 1);
-    $('scan-status').textContent = 'Scan abgeschlossen';
+    $('scan-status').textContent = ui.crawler.stats.errors ? 'Scan abgeschlossen – Hinweise bei den betroffenen Videos beachten' : 'Scan abgeschlossen';
     $('target-card').hidden = false;
     ui.state = 'scanned';
     updatePlanSummary();
@@ -234,14 +281,17 @@ async function runScan() {
   } catch (err) {
     ui.state = 'idle';
     setProgress('scan-progress', 0);
-    $('scan-status').textContent = 'Scan fehlgeschlagen';
+    $('scan-status').textContent = err.name === 'AbortError' ? 'Scan abgebrochen' : 'Scan fehlgeschlagen';
     log('scan-log', err.message, 'err');
-    if (err instanceof SessionExpiredError) {
+    if (err.name === 'AbortError') {
+      banner('Scan abgebrochen. Du kannst ihn erneut starten.', 'info');
+    } else if (err instanceof SessionExpiredError) {
       banner('Deine StudOn-Session ist abgelaufen. Bitte in StudOn neu einloggen und den Scan wiederholen.', 'error', { href: course.url || repoUrl(course.refId), text: 'StudOn öffnen' });
     } else {
       banner(`Scan fehlgeschlagen: ${err.message}`, 'error');
     }
   } finally {
+    $('fautv-links').disabled = false;
     $('btn-scan').disabled = false;
     $('btn-scan').textContent = 'Erneut scannen';
     $('btn-scan-abort').hidden = true;
@@ -537,6 +587,7 @@ async function getDriveToken({ refresh = false } = {}) {
 async function runExport() {
   if (!ui.plan || ui.state === 'exporting') return;
   ui.state = 'exporting';
+  $('fautv-links').disabled = true;
   banner('');
   $('btn-export').disabled = true;
   $('btn-export-abort').hidden = false;
@@ -554,6 +605,7 @@ async function runExport() {
   if (target.mode === 'existing' && !target.notebookId) {
     banner('Bitte ein vorhandenes Notebook auswählen.', 'error');
     ui.state = 'scanned';
+    $('fautv-links').disabled = false;
     $('btn-export').disabled = false;
     $('btn-export-abort').hidden = true;
     $('btn-scan').disabled = false;
@@ -567,6 +619,7 @@ async function runExport() {
     } catch (err) {
       banner(`Google Drive konnte nicht verbunden werden: ${err.message}`, 'error');
       ui.state = 'scanned';
+      $('fautv-links').disabled = false;
       $('btn-export').disabled = false;
       $('btn-export-abort').hidden = true;
       $('btn-scan').disabled = false;
@@ -626,6 +679,7 @@ async function runExport() {
     $('export-status').textContent = 'Export fehlgeschlagen';
   } finally {
     ui.state = 'scanned';
+    $('fautv-links').disabled = false;
     $('btn-export').disabled = false;
     $('btn-export-abort').hidden = true;
     $('btn-scan').disabled = false;
@@ -697,7 +751,20 @@ function renderResult() {
 /* ---------- wiring ---------- */
 
 $('btn-scan').addEventListener('click', runScan);
-$('btn-scan-abort').addEventListener('click', () => ui.crawler && ui.crawler.abort());
+$('fautv-links').addEventListener('input', () => {
+  if (ui.state !== 'scanned') return;
+  ui.reconToken += 1;
+  ui.state = 'idle';
+  ui.tree = null;
+  ui.plan = null;
+  $('btn-export').disabled = true;
+  $('target-card').hidden = true;
+  $('result-card').hidden = true;
+  $('tree').hidden = true;
+  $('scan-stats').hidden = true;
+  $('scan-status').textContent = 'Links geändert – bitte erneut scannen';
+});
+$('btn-scan-abort').addEventListener('click', () => { ui.scanController?.abort(); ui.crawler?.abort(); });
 $('btn-export').addEventListener('click', runExport);
 $('btn-export-abort').addEventListener('click', () => ui.exporter && ui.exporter.abort());
 $('btn-rescan').addEventListener('click', runScan);

@@ -57,6 +57,16 @@ verwendete Notebook vorausgewählt – so landet nur Neues dort und nichts wird 
 
 Die Extension-ID ist über den `key` im Manifest fest: `hceibhcelpeeniihfdlbfopkmnakhemd`.
 
+### FAU.tv ohne StudOn (ab 2.2.0)
+
+- Auf einer FAU.tv-Video- oder Serienseite **An NotebookLM senden** klicken. Alternativ das Erweiterungs-Popup öffnen, dort einen Video- oder Serienlink einfügen und den Exporter öffnen.
+- **Scan starten** liest alle Vorlesungen einer Serie. Im Baum lassen sich alle oder einzelne Transkripte auswählen; Videos ohne verfügbare Transkripte werden mit einem Hinweis aufgeführt.
+- Ein neues oder vorhandenes Notebook auswählen und **Export starten** klicken. Bei geschützten Videos zuerst im selben Chrome-Profil bei FAU.tv anmelden.
+- Auch im StudOn-Exporter können unter **FAU.tv-Videos oder Serien hinzufügen** weitere Links ergänzt werden, einer pro Zeile. Nach Änderungen erneut scannen. Die Links bleiben für den nächsten Scan gespeichert.
+- **Erneut scannen (Sync)** erkennt neue Vorlesungen. Bereits importierte Transkripte werden beim Abgleich mit dem gewählten Notebook übersprungen.
+
+Nach einem lokalen Update: Erweiterung in `chrome://extensions` neu laden und offene StudOn-/FAU.tv-Seiten aktualisieren. Für diese Version den aktuellen Projektordner oder das mit `npm run package` erzeugte ZIP verwenden; veröffentlichte Downloads werden dadurch nicht automatisch aktualisiert.
+
 ## Google Drive (optional)
 
 Drive braucht eine OAuth-Client-ID (kein Weg ohne). Einmalig:

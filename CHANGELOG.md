@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.0 – 2026-09-22
+
+- FAU.tv unabhängig von StudOn starten: über den Button auf Video- und Serienseiten oder einen eingefügten Link im Erweiterungs-Popup.
+- Ganze Serien auflösen, Transkripte einzeln auswählen und in ein neues oder vorhandenes Notebook exportieren.
+- Zusätzliche Video- und Serienlinks im StudOn-Exporter ergänzen; Links für erneute Scans merken.
+- Überschneidende Links zusammenführen und fehlende Transkripte bzw. nötige Anmeldungen pro Video anzeigen.
+
 ## 2.1.1 – 2026-09-06
 
 - Mediacasts/Seiten, die YouTube- oder fau.tv-Videos als `<video src=…>` einbinden, erzeugten einen Download-Job „watch“, der mit „Failed to fetch“ scheiterte. Solche Videos sind jetzt Links (YouTube-Quelle bzw. fau.tv-Transkript).

@@ -15,3 +15,7 @@ video/node_modules/
 video/out/
 site/media/*.mp4
 site/downloads/
+
+# Agenten-Artefakte
+.omx/
+.playwright-mcp/
