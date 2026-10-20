@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.1 – 2026-10-21
+
+- **Geänderte Texte werden ersetzt.** Bisher blieb ein Text, der schon im Notebook lag, für immer in der alten
+  Fassung – auch wenn das Lernmodul inzwischen viel mehr hergab. Jetzt wird die Wortzahl gemerkt; weicht sie
+  spürbar ab (mehr als 10 % bzw. 20 Wörter), wird die alte Quelle gelöscht und die neue hochgeladen. Texte aus
+  Exporten vor 2.3.0 werden beim nächsten Lauf einmalig erneuert (dort fehlten H5P-Inhalte und Lernmodul-Seiten
+  standen doppelt).
+
 ## 2.3.0 – 2026-10-21
 
 - **H5P-Inhalte werden exportiert.** Lernmodule (z. B. vhb-Kurse) bestehen oft fast nur aus H5P-Blöcken; bisher

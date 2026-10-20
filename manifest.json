@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StudOn → NotebookLM",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Exportiert komplette FAU-StudOn-Kurse (Ordner, Dateien, Lernmodule, Übungen, Sitzungen, Links) direkt in Google NotebookLM – optional gespiegelt nach Google Drive oder als ZIP.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8tYqMsIHtdyAfEYjof2YfwKbeYMRy6grCKKBsU5gXWpNLPcfMK9K4ImX/r3oeg0Yr/Osw61wwYRdDMnG3grohOuutQL9zJDPSwX33x/De/MvEHj0WiHCX/IZCiQp/tpZSanpF8UURuCptPBIqQXcPxAZfSCB7YwWXvyLrkrj1NI9sMU1AIy5QtSg7YugU2uCNEcKJBbRec4OEhnXmxrXPUQQh0nqA+YtDfHthoyUvYV/FyN8YDnJ2GjvHb6aEgUgJMB/2wnXf/+9N5rVdjt1+EJnfZREakMi8XXrYVd84CIoL0AH0WGR7Ac+SHfNy2/R6zmEK9arsFPh6A4bxIzSNQIDAQAB",
   "icons": {

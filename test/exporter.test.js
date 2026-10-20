@@ -489,3 +489,22 @@ test('Links: fehlt die URL in der Quellenliste, wird sie per getSource nachgesch
   assert.equal(plan.jobs.length, 1);
   assert.equal(plan.jobs[0].url, 'https://example.org/neu');
 });
+
+test('Geänderter Text ersetzt die alte Quelle, kleine Schwankungen nicht', () => {
+  const node = (words) => ({ id: 't1', kind: 'text', type: 'lm', refId: '7193542', title: 'Lernmodul – Introduction', filename: 'Lernmodul – Introduction.md', content: 'wort '.repeat(words), words, path: ['K'], children: [], errors: [] });
+  const tree = (n) => ({ id: 'root', kind: 'container', type: 'crs', refId: '1', title: 'K', path: [], children: [n], errors: [] });
+  const key = 'text:lm:7193542:Lernmodul – Introduction.md';
+  const settings = { overviewSource: false };
+  const state = (signature) => ({ items: { [key]: { sourceId: 'old', sourceIds: ['old'], signature } } });
+
+  const grown = planExport({ tree: tree(node(2292)), state: state('words:88'), settings });
+  assert.equal(grown.jobs.length, 1, 'H5P-Inhalt dazugekommen → neu hochladen');
+  assert.deepEqual(grown.jobs[0].replaceSourceIds, ['old']);
+
+  const jitter = planExport({ tree: tree(node(2300)), state: state('words:2292'), settings });
+  assert.equal(jitter.jobs.length, 0);
+  assert.equal(jitter.skipped[0].reason, PRESENT_REASON);
+
+  const legacy = planExport({ tree: tree(node(2292)), state: state('|'), settings });
+  assert.deepEqual(legacy.jobs[0].replaceSourceIds, ['old'], 'Eintrag von vor 2.3.0 wird einmal erneuert');
+});
