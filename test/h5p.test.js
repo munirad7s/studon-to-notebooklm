@@ -57,6 +57,15 @@ test('Selbsttests kommen mit Loesungen, ohne UI-Texte', () => {
   assert.doesNotMatch(md, /\bCheck\b|\bRetry\b|Start Quiz/);
 });
 
+test('HTML-Entities in Antworten werden nicht doppelt kodiert', () => {
+  const out = h5pToHtml({
+    contentId: '1', library: 'H5P.MultiChoice 1.16', title: 't',
+    params: { question: '<p>Wer?</p>', answers: [{ correct: true, text: '<div>Osterwalder &amp; Pigneur&#039;s &lt;Canvas&gt;</div>' }] },
+  }, PAGE_URL);
+  const doc = new DOMParser().parseFromString(`<div>${out}</div>`, 'text/html');
+  assert.match(elementToMarkdown(doc.querySelector('div')), /✔ \(richtig\) Osterwalder & Pigneur's <Canvas>/);
+});
+
 test('Unbekannter Inhaltstyp: inhaltliche Felder ja, l10n/UI nein', () => {
   const out = h5pToHtml({
     contentId: '1', library: 'H5P.SomethingNew 1.0', title: 't',
