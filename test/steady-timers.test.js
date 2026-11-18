@@ -60,3 +60,12 @@ test('Fällt der Worker später aus, gehen wartende Timer nicht verloren', async
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(after, true);
 });
+
+test('ready meldet, ob der Worker wirklich läuft', async () => {
+  assert.equal(await createSteadyTimers({ createWorker: await realWorkerFactory() }).ready, true);
+  assert.equal(await createSteadyTimers({ createWorker: () => { throw new Error('blockiert'); } }).ready, false);
+  let worker;
+  const broken = createSteadyTimers({ createWorker: () => (worker = { postMessage() {}, onmessage: null, onerror: null }) });
+  worker.onerror(new Error('Skript nicht ladbar'));
+  assert.equal(await broken.ready, false);
+});

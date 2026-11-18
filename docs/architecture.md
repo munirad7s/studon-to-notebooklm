@@ -44,6 +44,19 @@ Deshalb führt ein StudOn-Tab die Abrufe aus:
   Browser die Prüfung im normalen Betrieb bestanden hat. Zeigt ein Tab noch die Prüfseite, wird er
   übergangen; liefert StudOn sie trotzdem, bricht der Scan mit `BotCheckError` ab.
 
+## Lange Läufe im Hintergrund (seit 2.4.0)
+
+Ein Export dauert Minuten; der Nutzer wechselt dabei den Tab. Chrome behandelt versteckte Tabs so:
+
+| Was Chrome tut | Folge ohne Gegenmittel | Gegenmittel |
+|---|---|---|
+| Seite nach 5 Minuten im Hintergrund einfrieren | StudOn-Tab beantwortet keine Abrufe mehr, Export-Tab bleibt stehen | Web-Sperre (`navigator.locks`, `shared`) – Seiten mit Sperre werden nicht eingefroren. StudOn-Tab: solange Abrufe laufen, bis eine Minute danach (`content/bridge.js`). Export-Tab: während Scan und Export (`whileAwake` in `export.js`). |
+| Timer versteckter Seiten bremsen (sofort 1/s, nach 5 Minuten 1/min) | jede Pause von 120–350 ms dauert bis zu einer Minute | `lib/steady-timers.js`: ein Worker zählt die Zeit (`lib/timer-worker.js`), die Seite bekommt nur die Nachricht. Fällt der Worker aus, laufen die Timer der Seite. |
+| – | Tab trotzdem weg (geschlossen, abgestürzt, eingefroren) | `StudOnBridge.guarded`: bei langen Antworten alle 8 s ein Ping; nach zwei ausbleibenden gilt der Tab als verloren und der Abruf läuft über den nächsten. Ein wacher Tab mit langsamer Antwort wird abgewartet (Zeitgrenze 90 s je Abruf). |
+
+Gemessen am 18.11.2026 (Chrome 156): Export des vhb-Kurses ref 7193538, der StudOn-Tab antwortete genau fünf
+Minuten nach dem Wechsel in den Hintergrund nicht mehr; er war weder neu geladen noch verworfen.
+
 ## Datenfluss
 
 1. **Scan** (`StudOnCrawler.scan`) → Baum aus `container | file | text | link | skipped`-Knoten; jede Fehlerquelle wird am Knoten notiert, nur eine abgelaufene Session bricht ab.

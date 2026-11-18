@@ -274,6 +274,7 @@ async function runScan() {
   $('result-card').hidden = true;
   setProgress('scan-progress', 0.02);
 
+  if (!(await timers.ready)) log('scan-log', 'Hinweis: Die Hintergrund-Timer sind nicht verfügbar – lass diesen Tab sichtbar, sonst bremst Chrome den Lauf.', 'err');
   const scan = scanOptionsFromUi();
   await saveSettings({ scan });
   ui.settings.scan = scan;
