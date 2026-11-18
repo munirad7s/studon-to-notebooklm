@@ -124,3 +124,68 @@ test('Manifest lädt die StudOn-Brücke in jeden StudOn-Tab, vor dem Dialog-Skri
   const studon = manifest.content_scripts.find((entry) => entry.matches.some((m) => m.includes('studon.fau.de')));
   assert.deepEqual(studon.js, ['content/bridge.js', 'content/content.js']);
 });
+
+/** Lädt content/content.js auf einer Kursseite und öffnet den Dialog; `course` ist der gespeicherte Kurszustand. */
+async function openDialog({ course, notebooks }) {
+  const { document, window } = parseHTML('<html><head><title>Inhalt: Implementing Innovation: StudOn</title></head><body><div class="il-page-content-header"><h1>Implementing Innovation</h1></div><div id="il_head_action"><div id="tttt"></div></div></body></html>');
+  let root;
+  const create = document.createElement.bind(document);
+  document.createElement = (...args) => {
+    const el = create(...args);
+    if (args[0] === 'div') {
+      const attach = el.attachShadow.bind(el);
+      el.attachShadow = (options) => {
+        root = attach(options);
+        if (!root.getElementById) root.getElementById = (id) => root.querySelector(`#${id}`);
+        return root;
+      };
+    }
+    return el;
+  };
+  window.top = window;
+  // linkedom merkt sich select.value nicht. Wie im Browser: gewählt ist, was gesetzt wurde, sonst die erste Option.
+  const chosen = new WeakMap();
+  Object.defineProperty(window.HTMLSelectElement.prototype, 'value', {
+    configurable: true,
+    get() { return chosen.get(this) ?? this.querySelector('option')?.getAttribute('value') ?? ''; },
+    set(value) { chosen.set(this, value); },
+  });
+  const context = vm.createContext({
+    document, window, URLSearchParams,
+    location: new URL('https://www.studon.fau.de/studon/ilias.php?baseClass=ilrepositorygui&ref_id=7139011'),
+    setTimeout: () => {}, // nur Einblend-Animation und Textmarkierung
+    chrome: {
+      runtime: {
+        getURL: (path) => `chrome-extension://test/${path}`,
+        sendMessage(message, respond) { respond(message.type === 'list-notebooks' ? { ok: true, email: 'student@example.org', notebooks } : { ok: true }); },
+      },
+      storage: { local: { get(keys, respond) { respond({ 'course:7139011': course }); } } },
+    },
+  });
+  vm.runInContext(await readFile(new URL('../content/content.js', import.meta.url), 'utf8'), context);
+  document.querySelector('#s2n-trigger button').click();
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  return {
+    mode: root.querySelector('.seg[aria-checked="true"]').dataset.mode,
+    selected: root.getElementById('nb-existing').value,
+  };
+}
+
+const REAL = { id: 'nb-real', title: 'Implementing Innovation', emoji: '', sourceCount: 18 };
+const OTHER = { id: 'nb-other', title: 'Digital Business Model Strategy', emoji: '', sourceCount: 34 };
+const courseState = { refId: '7139011', items: {}, primaryNotebookId: 'nb-test', notebooks: [{ id: 'nb-real', title: 'Implementing Innovation' }, { id: 'nb-test', title: 'Implementing Innovation – Test' }] };
+
+test('Dialog: das zuletzt verwendete Notebook ist vorausgewählt', async () => {
+  const state = await openDialog({ course: courseState, notebooks: [OTHER, { id: 'nb-test', title: 'Implementing Innovation – Test', emoji: '', sourceCount: 16 }, REAL] });
+  assert.deepEqual(state, { mode: 'existing', selected: 'nb-test' });
+});
+
+test('Dialog: ist das zuletzt verwendete Notebook gelöscht, steht das frühere Notebook dieses Kurses da – nicht irgendeines', async () => {
+  const state = await openDialog({ course: courseState, notebooks: [OTHER, REAL] });
+  assert.deepEqual(state, { mode: 'existing', selected: 'nb-real' });
+});
+
+test('Dialog: gibt es kein Notebook dieses Kurses mehr, wird ein neues vorgeschlagen', async () => {
+  const state = await openDialog({ course: courseState, notebooks: [OTHER] });
+  assert.equal(state.mode, 'new');
+});

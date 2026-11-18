@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.1 – 2026-11-19
+
+- **Dialog wählt kein fremdes Notebook mehr vor.** War das zuletzt für einen Kurs verwendete Notebook gelöscht,
+  stand unter „Vorhandenes“ einfach das erste Notebook der Liste – mit dem Hinweis „Zuletzt für diesen Kurs
+  verwendet“. Ein Klick auf „Exportieren“ hätte den Kurs in ein fremdes Notebook geladen. Jetzt steht dort das
+  jüngste noch vorhandene Notebook dieses Kurses; gibt es keines mehr, schlägt der Dialog „Neu anlegen“ vor.
+
 ## 2.4.0 – 2026-11-18
 
 - **Export funktioniert wieder.** StudOn steht seit November 2026 hinter einem Bot-Schutz (Anubis). Dessen

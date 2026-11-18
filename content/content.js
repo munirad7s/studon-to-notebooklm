@@ -269,6 +269,14 @@
     if (res && res.ok) {
       state.nlmOk = true;
       state.notebooks = res.notebooks || [];
+      // Das zuletzt verwendete Notebook kann inzwischen gelöscht sein. Dann gilt das jüngste noch
+      // vorhandene dieses Kurses, sonst „Neu anlegen“ – nie stillschweigend irgendein Notebook.
+      const exists = (id) => state.notebooks.some((n) => n.id === id);
+      if (state.lastNotebookId && !exists(state.lastNotebookId)) {
+        const earlier = ((course && course.notebooks) || []).map((n) => n.id).reverse().find(exists);
+        state.lastNotebookId = earlier || null;
+        setMode(earlier ? 'existing' : 'new');
+      }
       renderNotebooks();
       setStatus('ok', res.email ? `NotebookLM · ${res.email}` : 'NotebookLM verbunden');
     } else {
