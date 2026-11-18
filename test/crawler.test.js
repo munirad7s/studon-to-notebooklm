@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DOMParser } from 'linkedom';
-import { StudOnCrawler, SessionExpiredError, collectItems, flatten, treeToOverview, collectMediaLinks, collectExternalLinks } from '../lib/crawler.js';
+import { StudOnCrawler, SessionExpiredError, BotCheckError, hasCourseContent, collectItems, flatten, treeToOverview, collectMediaLinks, collectExternalLinks } from '../lib/crawler.js';
 import * as fx from './fixtures/studon.js';
+import { anubisPage } from './fixtures/anubis.js';
 
 function crawler(extra = {}, fetchOpts = {}) {
   const fetch = fx.fakeFetch(fx.routes(), fetchOpts);
@@ -278,4 +279,36 @@ test('YouTube/fau.tv in <video src> sind Links, keine Downloads (sonst „watch:
   const yt = links.find((l) => l.isYouTube);
   assert.ok(yt && yt.href === 'https://www.youtube.com/watch?v=abc123def45' && yt.title === 'Vorlesung 3');
   assert.deepEqual(links.filter((l) => l.isFauTv).map((l) => l.href).sort(), ['https://www.fau.tv/clip/id/42516', 'https://www.fau.tv/clip/id/777']);
+});
+
+test('Scan bricht mit BotCheckError ab, wenn StudOn statt der Kursseite die Bot-Prüfseite liefert', async () => {
+  const fetch = async (url) => ({ ok: true, status: 200, url, text: async () => anubisPage });
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0 } });
+  await assert.rejects(c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' }), (err) => {
+    assert.ok(err instanceof BotCheckError);
+    assert.match(err.message, /Bot-Schutz/);
+    return true;
+  });
+});
+
+test('Bot-Prüfseite mitten im Scan (Übung) bricht ab, statt als Text im Baum zu landen', async () => {
+  const base = fx.fakeFetch(fx.routes());
+  const fetch = async (url) => (/\/go\/exc\//.test(url)
+    ? { ok: true, status: 200, url, text: async () => anubisPage }
+    : base(url));
+  const c = new StudOnCrawler({ fetch, DOMParser, options: { delayMs: 0, forum: false } });
+  await assert.rejects(c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' }), BotCheckError);
+});
+
+test('hasCourseContent: ein Kurs, in dem nur die Info-Seite gefunden wurde, gilt als leer', async () => {
+  const full = await crawler().c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  assert.equal(hasCourseContent(full), true);
+
+  const routes = { ...fx.routes() };
+  const courseUrl = Object.keys(routes).find((u) => u.endsWith(`ref_id=${fx.COURSE_REF}`) && !u.includes('cmd='));
+  routes[courseUrl] = fx.emptyPage;
+  const c = new StudOnCrawler({ fetch: fx.fakeFetch(routes), DOMParser, options: { delayMs: 0 } });
+  const empty = await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  assert.deepEqual(empty.children.map((n) => n.kind), ['text']);
+  assert.equal(hasCourseContent(empty), false);
 });

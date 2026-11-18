@@ -57,6 +57,8 @@ button, input, select { font: inherit; }
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
+/* `display` oben schlägt sonst das hidden-Attribut: der Badge stünde zusätzlich zum Kopf-Button da. */
+.badge[hidden] { display: none; }
 .badge:hover { background: var(--accent); border-color: var(--accent); }
 .badge svg { width: 14px; height: 14px; stroke: #fff; }
 

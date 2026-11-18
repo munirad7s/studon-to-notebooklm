@@ -2,21 +2,47 @@
 
 ```
 StudOn-Tab                          Exporter-Tab (export/export.html)                 Google
-┌──────────────────┐   message     ┌──────────────────────────────────────┐          ┌──────────────┐
-│ content/content.js│ ───────────▶ │ export.js (UI + Orchestrierung)      │  fetch   │ StudOn       │
-│  ⚡ Badge, ref_id │  open-exporter│  ├ lib/crawler.js  ── DOMParser ─────┼─────────▶│ (Session-    │
-└──────────────────┘   via SW      │  ├ lib/exporter.js                   │          │  Cookies)    │
-                                    │  │   ├ lib/nlm-client.js ── batchexecute + upload ─▶ NotebookLM │
-background/service_worker.js       │  │   └ lib/drive-client.js ── Drive v3 ──────────▶ Drive       │
-  (öffnet/fokussiert den Tab)       │  └ lib/storage.js (chrome.storage.local)         │              │
-                                    └──────────────────────────────────────┘          └──────────────┘
+┌──────────────────┐  open-exporter ┌──────────────────────────────────────┐          ┌──────────────┐
+│ content/content.js│ ─── via SW ──▶│ export.js (UI + Orchestrierung)      │          │              │
+│  Button, Dialog   │               │  ├ lib/crawler.js  ── DOMParser      │          │              │
+│                   │  s2n-fetch    │  ├ lib/exporter.js                   │          │              │
+│ content/bridge.js │◀── /-read ────│  │   ├ lib/studon-bridge.js          │          │              │
+│  fetch (Cookies,  │ ── Antwort ──▶│  │   ├ lib/nlm-client.js ── batchexecute + upload ─▶ NotebookLM │
+│  Bot-Schutz-Pass) │               │  │   └ lib/drive-client.js ── Drive v3 ──────────▶ Drive       │
+└────────┬─────────┘               │  └ lib/storage.js (chrome.storage.local)         │              │
+         │ fetch                    └──────────────────────────────────────┘          └──────────────┘
+         ▼
+      StudOn                        background/service_worker.js öffnet/fokussiert den Exporter-Tab
 ```
 
 ## Warum ein Extension-Tab statt Service-Worker/Offscreen
 
 - Extension-Seiten haben volle `chrome.*`-Rechte (`storage`, `identity`, `downloads`), DOMParser, Blob-URLs.
-- `fetch` aus Extension-Seiten sendet Cookies für alle Hosts in `host_permissions` – genau wie die YouTube-Extension.
+- `fetch` aus Extension-Seiten sendet die Google-Cookies für NotebookLM und Drive (`host_permissions`).
 - Lange Jobs (hunderte Dateien) laufen sichtbar mit Fortschritt, überleben Popup-Schließen und SW-Timeouts.
+
+## Warum StudOn über einen StudOn-Tab gelesen wird (seit 2.4.0)
+
+Seit November 2026 steht der Bot-Schutz Anubis vor StudOn. Wer die Rechenaufgabe bestanden hat, bekommt das
+Cookie `fau-studon-anubis-auth` – gesetzt mit `Partitioned`, also nur gültig, wenn die oberste Seite zu
+`fau.de` gehört. Ein `fetch` aus dem Exporter-Tab (`chrome-extension://…`) liegt in einer anderen
+Cookie-Partition und bekommt bei HTTP 200 die Prüfseite statt des Inhalts. Die Session (`PHPSESSID`) käme an,
+der Durchlass nicht.
+
+Deshalb führt ein StudOn-Tab die Abrufe aus:
+
+- `content/bridge.js` läuft in jedem StudOn-Tab und beantwortet `s2n-fetch` (Kopf der Antwort), `s2n-text`
+  (Inhalt als Text), `s2n-read` (Binärdaten in Base64-Stücken von 1 MB) und `s2n-cancel`. Es ruft nur
+  StudOn-Adressen ab und nur für die eigene Erweiterung.
+- `lib/studon-bridge.js` gibt dem Crawler und dem Exporter ein `fetch` mit denselben Eigenschaften wie
+  bisher (`ok`, `status`, `url`, `headers.get`, `text()`, `blob()`, `body.cancel()`). FAU.tv und Google
+  gehen weiter direkt.
+- Tab-Wahl: der Tab, aus dem gestartet wurde → ein anderer geladener StudOn-Tab → ein eigener
+  Hintergrund-Tab, der nach Scan bzw. Export wieder geschlossen wird. Geht der Tab mitten in einer Antwort
+  verloren (Navigation, geschlossen), wird der Abruf über den nächsten Tab wiederholt.
+- Die Erweiterung löst die Prüfung nicht selbst und kopiert kein Cookie: sie nutzt den Tab, in dem der
+  Browser die Prüfung im normalen Betrieb bestanden hat. Zeigt ein Tab noch die Prüfseite, wird er
+  übergangen; liefert StudOn sie trotzdem, bricht der Scan mit `BotCheckError` ab.
 
 ## Datenfluss
 

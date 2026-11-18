@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.0 – 2026-11-18
+
+- **Export funktioniert wieder.** StudOn steht seit November 2026 hinter einem Bot-Schutz (Anubis). Dessen
+  Durchlass gilt nur in StudOn-Tabs; der Export-Tab bekam statt der Kursseite die Prüfseite, der Scan meldete
+  „0 Einträge“ und ins Notebook gingen nur Kursstruktur und Info. Jetzt holt ein StudOn-Tab die Seiten und
+  Dateien und reicht sie an den Export-Tab weiter (`content/bridge.js`, `lib/studon-bridge.js`). Das ist der
+  Tab, aus dem du startest. Klickst du dort weiter oder schließt ihn, übernimmt ein anderer StudOn-Tab; ist
+  keiner offen, öffnet die Erweiterung einen im Hintergrund und schließt ihn danach wieder.
+- **Klare Meldungen statt leerer Exporte.** Die Prüfseite des Bot-Schutzes wird erkannt und bricht den Scan
+  mit Hinweis ab. Findet ein Scan nur die Info-Seite, steht das als Warnung da und der automatische Export
+  startet nicht.
+- **Schneller.** Während eine Datei zu NotebookLM hochlädt, wird die nächste schon von StudOn geholt – weiterhin
+  nur ein StudOn-Download zur selben Zeit.
+- **Protokoll.** Scan- und Export-Protokoll des letzten Laufs werden je Kurs gespeichert; „Protokoll kopieren“
+  im Export-Tab legt es für Fehlerberichte in die Zwischenablage.
+- Der schwebende „NotebookLM“-Button unten rechts erschien zusätzlich zum Button neben „Aktionen“. Behoben.
+
 ## 2.3.1 – 2026-10-21
 
 - **Geänderte Texte werden ersetzt.** Bisher blieb ein Text, der schon im Notebook lag, für immer in der alten

@@ -1,10 +1,11 @@
-import { StudOnCrawler, SessionExpiredError, flatten } from '../lib/crawler.js';
+import { StudOnCrawler, SessionExpiredError, BotCheckError, flatten, hasCourseContent } from '../lib/crawler.js';
+import { StudOnBridge, StudOnTabError, createStudOnFetch } from '../lib/studon-bridge.js';
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { DriveClient, buildAuthUrl, parseTokenFromRedirect } from '../lib/drive-client.js';
 import { planExport, Exporter, itemKey, reconcileNotebook, deleteDuplicateSources, targetChain, isPresent } from '../lib/exporter.js';
 import { extractAudioBlob } from '../lib/audio-extract.js';
-import { getSettings, saveSettings, getCourseState, saveCourseState } from '../lib/storage.js';
-import { typeLabel, formatBytes, gotoUrl, repoUrl } from '../lib/ilias.js';
+import { getSettings, saveSettings, getCourseState, saveCourseState, saveRunLog } from '../lib/storage.js';
+import { typeLabel, formatBytes, gotoUrl, repoUrl, isStudOnUrl } from '../lib/ilias.js';
 import { parseFauTvUrl } from '../lib/fautv.js';
 import { appendFauTvSources } from '../lib/fautv-import.js';
 
@@ -32,6 +33,7 @@ const launch = {
   notebookId: params.get('notebook') || '',
   notebookTitle: params.get('nbtitle') || '',
   scan: params.has('scan') ? new Set(params.get('scan').split(',').filter(Boolean)) : null,
+  tabId: Number(params.get('tab')) || null,           // StudOn-Tab, aus dem gestartet wurde
 };
 
 const ui = {
@@ -50,7 +52,19 @@ const ui = {
   recon: null,       // Ergebnis des Live-Abgleichs mit dem Ziel-Notebook (reconcileNotebook)
   reconToken: 0,
   scanController: null,
+  emptyScan: false,  // Scan fand nur die Info-Seite – nicht ungefragt exportieren
 };
+
+/** Protokoll des laufenden Scans/Exports; wird mitgespeichert (lib/storage.js saveRunLog). */
+const runLog = { scan: [], export: [] };
+const RUN_LOG_LINES = 400;
+let runLogTimer = null;
+
+function persistRunLog() {
+  runLogTimer = null;
+  if (!course.refId) return;
+  saveRunLog(course.refId, { version: chrome.runtime.getManifest().version, scan: runLog.scan, export: runLog.export }).catch(() => {});
+}
 
 function log(target, message, cls = '') {
   const el = $(target);
@@ -60,7 +74,23 @@ function log(target, message, cls = '') {
   line.textContent = `[${new Date().toLocaleTimeString('de-DE')}] ${message}`;
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
+  const lines = runLog[target === 'export-log' ? 'export' : 'scan'];
+  lines.push(line.textContent);
+  if (lines.length > RUN_LOG_LINES) lines.shift();
+  runLogTimer ||= setTimeout(persistRunLog, 1500);
 }
+
+/**
+ * StudOn steht hinter einem Bot-Schutz, dessen Durchlass nur in StudOn-Tabs gilt. Deshalb holt
+ * ein StudOn-Tab die Seiten und Dateien (lib/studon-bridge.js); FAU.tv und Google gehen direkt.
+ */
+const bridge = new StudOnBridge({
+  tabs: chrome.tabs,
+  preferredTabId: launch.tabId,
+  openUrl: isStudOnUrl(course.url) ? course.url : repoUrl(course.refId),
+  log: (m) => log(ui.state === 'exporting' ? 'export-log' : 'scan-log', m),
+});
+const studonFetch = createStudOnFetch({ bridge, fetch: (u, i) => fetch(u, i) });
 
 function banner(message, kind = '', link = null) {
   const el = $('banner');
@@ -162,7 +192,7 @@ async function applyLaunch(connected) {
   if (!launch.autostart) return;
   if (!ui.nlm || !ui.nlm.at) return; // Banner mit Login-Hinweis steht bereits.
   await runScan();
-  if (ui.state !== 'scanned') return;
+  if (ui.state !== 'scanned' || ui.emptyScan) return;
   if (!ui.plan || !ui.plan.jobs.length) {
     banner('Nichts zu exportieren - alles liegt bereits im Notebook oder ist abgewählt.', 'info');
     return;
@@ -221,6 +251,7 @@ async function runScan() {
   $('btn-scan').disabled = true;
   $('btn-scan-abort').hidden = false;
   $('scan-log').innerHTML = '';
+  runLog.scan = [];
   $('scan-log').hidden = false;
   $('tree').hidden = true;
   $('scan-stats').hidden = true;
@@ -233,7 +264,7 @@ async function runScan() {
   ui.settings.scan = scan;
 
   ui.crawler = new StudOnCrawler({
-    fetch: (u, i) => fetch(u, i),
+    fetch: studonFetch,
     DOMParser: window.DOMParser,
     options: scan,
     log: (m) => log('scan-log', m),
@@ -278,6 +309,11 @@ async function runScan() {
     updatePlanSummary();
     $('target-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     await refreshReconcile();
+    ui.emptyScan = !standaloneFauTv && !hasCourseContent(ui.tree);
+    if (ui.emptyScan) {
+      log('scan-log', 'Keine Kursinhalte gefunden – nur die Info-Seite.', 'err');
+      banner('Der Scan hat hier keine Inhalte gefunden. Bist du in StudOn eingeloggt und Mitglied des Kurses? Exportiert wird erst, wenn du es ausdrücklich startest.', 'error', { href: course.url || repoUrl(course.refId), text: 'StudOn öffnen' });
+    }
   } catch (err) {
     ui.state = 'idle';
     setProgress('scan-progress', 0);
@@ -287,6 +323,10 @@ async function runScan() {
       banner('Scan abgebrochen. Du kannst ihn erneut starten.', 'info');
     } else if (err instanceof SessionExpiredError) {
       banner('Deine StudOn-Session ist abgelaufen. Bitte in StudOn neu einloggen und den Scan wiederholen.', 'error', { href: course.url || repoUrl(course.refId), text: 'StudOn öffnen' });
+    } else if (err instanceof BotCheckError) {
+      banner('StudOn hat statt der Seite seine Bot-Prüfung geliefert. Öffne StudOn in einem Tab, warte bis die Seite geladen ist, und starte den Scan erneut.', 'error', { href: course.url || repoUrl(course.refId), text: 'StudOn öffnen' });
+    } else if (err instanceof StudOnTabError) {
+      banner(err.message, 'error', { href: course.url || repoUrl(course.refId), text: 'StudOn öffnen' });
     } else {
       banner(`Scan fehlgeschlagen: ${err.message}`, 'error');
     }
@@ -295,6 +335,7 @@ async function runScan() {
     $('btn-scan').disabled = false;
     $('btn-scan').textContent = 'Erneut scannen';
     $('btn-scan-abort').hidden = true;
+    bridge.close();
   }
 }
 
@@ -593,6 +634,7 @@ async function runExport() {
   $('btn-export-abort').hidden = false;
   $('btn-scan').disabled = true;
   $('export-log').innerHTML = '';
+  runLog.export = [];
   $('export-log').hidden = false;
   $('result-card').hidden = true;
   setProgress('export-progress', 0.01);
@@ -633,7 +675,7 @@ async function runExport() {
   ui.exporter = new Exporter({
     nlm: ui.nlm,
     drive: ui.drive,
-    fetch: (u, i) => fetch(u, i),
+    fetch: studonFetch,
     JSZip: window.JSZip,
     extractAudio: extractAudioBlob,
     settings: { ...settings, delayMs: 350 },
@@ -683,6 +725,7 @@ async function runExport() {
     $('btn-export').disabled = false;
     $('btn-export-abort').hidden = true;
     $('btn-scan').disabled = false;
+    bridge.close();
   }
 }
 
@@ -772,6 +815,13 @@ $('btn-select-all').addEventListener('click', () => setAll(true));
 $('btn-select-none').addEventListener('click', () => setAll(false));
 $('btn-select-new').addEventListener('click', selectNew);
 $('btn-dedupe').addEventListener('click', removeDuplicates);
+$('btn-copy-log').addEventListener('click', async () => {
+  const text = [`StudOn → NotebookLM ${chrome.runtime.getManifest().version} · ${course.title || course.refId}`, '', '— Scan —', ...runLog.scan, '', '— Export —', ...runLog.export].join('\n');
+  await navigator.clipboard.writeText(text);
+  $('btn-copy-log').textContent = 'Kopiert';
+  setTimeout(() => { $('btn-copy-log').textContent = 'Protokoll kopieren'; }, 1500);
+});
+window.addEventListener('pagehide', () => { bridge.close(); });
 // Ziel oder Optionen geändert → Abgleich mit dem (neuen) Ziel-Notebook, dann Plan.
 for (const el of document.querySelectorAll('#target-card input, #target-card select')) el.addEventListener('change', () => { refreshReconcile(); });
 

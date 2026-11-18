@@ -27,6 +27,7 @@ Es läuft komplett im Browser mit deiner bestehenden StudOn- und Google-Session.
 2. **Auswahl** – Baum mit Checkboxen: alles ist vorausgewählt, „Nur Neues“ wählt nur, was noch nicht im Notebook ist.
 3. **Export** – Neues Notebook, vorhandenes Notebook oder das zuletzt für diesen Kurs verwendete:
    - Dateien werden mit deiner StudOn-Session geladen und per Resumable-Upload direkt in NotebookLM hochgeladen
+     (StudOn wird dabei über einen geöffneten StudOn-Tab gelesen – lass ihn offen oder die Erweiterung öffnet einen)
    - Code/Text-Dateien (`.py`, `.java`, `.tex`, …) werden als `.txt` hochgeladen, ZIP-Archive entpackt
    - Texte (Lernmodule, Seiten, Wiki) werden als Textquellen angelegt, Links als URL-Quellen
    - eine Quelle „Kursstruktur“ beschreibt den kompletten Baum
@@ -101,6 +102,7 @@ npm run package      # dist/studon-to-notebooklm-<version>.zip
 - `lib/ilias.js` – StudOn-URLs, Objekttypen, Namen
 - `lib/text.js` – HTML → Markdown
 - `lib/crawler.js` – rekursiver Kurs-Scan (Baum)
+- `lib/studon-bridge.js` + `content/bridge.js` – StudOn-Abrufe laufen über einen StudOn-Tab (Bot-Schutz)
 - `lib/nlm-client.js` – NotebookLM-RPCs + Resumable-Upload
 - `lib/drive-client.js` – Drive v3 (OAuth via `chrome.identity`)
 - `lib/exporter.js` – Plan + Ausführung, inkrementeller Zustand, Overflow, ZIP
@@ -114,6 +116,9 @@ Protokoll- und Struktur-Details: [`docs/FINDINGS.md`](docs/FINDINGS.md), Archite
 |---|---|
 | „Nicht bei NotebookLM angemeldet“ | In diesem Chrome-Profil notebooklm.google.com öffnen, anmelden, Exporter neu laden |
 | „StudOn-Session abgelaufen“ | In StudOn neu einloggen, Scan wiederholen |
+| „StudOn hat statt der Seite seine Bot-Prüfung geliefert“ | StudOn in einem Tab öffnen, warten bis die Seite geladen ist, Scan wiederholen |
+| „StudOn ist in keinem Tab erreichbar“ | StudOn öffnen und einloggen – die Erweiterung liest StudOn über einen geöffneten StudOn-Tab |
+| „Der Scan hat hier keine Inhalte gefunden“ | Nur die Info-Seite war lesbar: einloggen bzw. dem Kurs beitreten, dann erneut scannen |
 | „RPC … fehlt in der Antwort“ | Google hat eine RPC-ID rotiert – IDs in `lib/nlm-client.js` (`RPC`) anpassen, siehe `docs/FINDINGS.md` |
 | Datei „liefert keine Datei“ | Kein Leserecht oder Objekt ist keine Datei – wird übersprungen und im Ergebnis gelistet |
 

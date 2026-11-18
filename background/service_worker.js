@@ -8,7 +8,7 @@ import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { getSettings } from '../lib/storage.js';
 import { parseFauTvUrl } from '../lib/fautv.js';
 
-const LAUNCH_KEYS = ['source', 'ref', 'type', 'title', 'url', 'scan', 'mode', 'notebook', 'nbtitle', 'autostart'];
+const LAUNCH_KEYS = ['source', 'ref', 'type', 'title', 'url', 'scan', 'mode', 'notebook', 'nbtitle', 'autostart', 'tab'];
 
 function exporterUrl(params) {
   const q = new URLSearchParams();
@@ -71,6 +71,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Der Dialog schickt den ILIAS-Objekttyp als objType, weil "type" die Nachricht kennzeichnet.
     const params = { ...message, type: message.objType ?? message.type_ ?? '' };
     if (params.type === 'open-exporter') params.type = '';
+    // Der StudOn-Tab, aus dem gestartet wurde, führt später die StudOn-Abrufe aus (lib/studon-bridge.js).
+    params.tab = sender && sender.tab && params.source !== 'fautv' ? sender.tab.id : '';
     openExporter(params)
       .then((tabId) => sendResponse({ ok: true, tabId }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));

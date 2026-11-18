@@ -99,3 +99,28 @@ test('popup accepts a pasted series link from a page outside StudOn', async () =
     delete globalThis.window;
   }
 });
+
+test('Export aus einem StudOn-Tab merkt sich diesen Tab für die StudOn-Abrufe', async () => {
+  let listener;
+  const created = [];
+  globalThis.chrome = {
+    runtime: { getURL: path => `chrome-extension://test/${path}`,
+      onInstalled: { addListener() {} }, onMessage: { addListener(fn) { listener = fn; } } },
+    tabs: { async query() { return []; }, async create(tab) { created.push(tab); return { id: 9 }; }, async update() {} },
+    windows: { async update() {} },
+  };
+  try {
+    await import('../background/service_worker.js?studon-tab');
+    const send = (message, sender) => new Promise(resolve => listener(message, sender, resolve));
+    await send({ type: 'open-exporter', ref: '7139011', objType: 'crs', title: 'Implementing Innovation', mode: 'new' }, { tab: { id: 654 } });
+    assert.equal(new URL(created[0].url).searchParams.get('tab'), '654');
+    await send({ type: 'open-exporter', ref: '7139012', objType: 'crs', title: 'Ohne Tab', mode: 'new' }, {});
+    assert.equal(new URL(created[1].url).searchParams.has('tab'), false);
+  } finally { delete globalThis.chrome; }
+});
+
+test('Manifest lädt die StudOn-Brücke in jeden StudOn-Tab, vor dem Dialog-Skript', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const studon = manifest.content_scripts.find((entry) => entry.matches.some((m) => m.includes('studon.fau.de')));
+  assert.deepEqual(studon.js, ['content/bridge.js', 'content/content.js']);
+});

@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseRepoLink, isDownloadLink, sanitizeName, parseSize, typeFromIcon,
-  filenameFromContentDisposition, looksLikeLogin, fileDownloadUrl, isYouTubeUrl, extensionOf,
+  filenameFromContentDisposition, looksLikeLogin, looksLikeBotCheck, fileDownloadUrl, isYouTubeUrl, extensionOf,
 } from '../lib/ilias.js';
+import { anubisPage } from './fixtures/anubis.js';
+import { coursePage } from './fixtures/studon.js';
 
 test('parseRepoLink handles ILIAS 9 /go/ links', () => {
   assert.deepEqual(parseRepoLink('https://www.studon.fau.de/studon/go/fold/6071389'), { type: 'fold', refId: '6071389' });
@@ -64,6 +66,14 @@ test('looksLikeLogin detects SSO redirects and login forms', () => {
   assert.equal(looksLikeLogin('https://www.sso.uni-erlangen.de/simplesaml/module.php/core/loginuserpass.php', ''), true);
   assert.equal(looksLikeLogin('https://www.studon.fau.de/studon/ilias.php?ref_id=1', '<input name="password" type="password">'), true);
   assert.equal(looksLikeLogin('https://www.studon.fau.de/studon/ilias.php?ref_id=1', '<div class="il-std-item">x</div>'), false);
+});
+
+test('looksLikeBotCheck erkennt die Anubis-Prüfseite, aber keine Kurs- oder Login-Seite', () => {
+  assert.equal(looksLikeBotCheck(anubisPage), true);
+  assert.equal(looksLikeBotCheck(coursePage), false);
+  assert.equal(looksLikeBotCheck('<input name="password" type="password">'), false);
+  assert.equal(looksLikeBotCheck(''), false);
+  assert.equal(looksLikeBotCheck(null), false);
 });
 
 test('misc helpers', () => {

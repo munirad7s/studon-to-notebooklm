@@ -6,6 +6,7 @@ import { StudOnCrawler } from '../lib/crawler.js';
 import { planExport, classifyFile, Exporter, itemKey, reconcileNotebook, deleteDuplicateSources, notebookChain, normUrl, normTitle, PRESENT_REASON } from '../lib/exporter.js';
 import { RpcError } from '../lib/nlm-client.js';
 import * as fx from './fixtures/studon.js';
+import { anubisPage } from './fixtures/anubis.js';
 
 await import('../lib/jszip.min.js');
 const JSZip = globalThis.JSZip;
@@ -507,4 +508,83 @@ test('Geänderter Text ersetzt die alte Quelle, kleine Schwankungen nicht', () =
 
   const legacy = planExport({ tree: tree(node(2292)), state: state('|'), settings });
   assert.deepEqual(legacy.jobs[0].replaceSourceIds, ['old'], 'Eintrag von vor 2.3.0 wird einmal erneuert');
+});
+
+test('Download: Bot-Prüfseite statt Datei wird als Bot-Schutz gemeldet, nicht als fehlende Berechtigung', async () => {
+  const tree = await scanFixture();
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const nlm = fakeNlm();
+  const state = { refId: fx.COURSE_REF, notebooks: [], primaryNotebookId: null, items: {} };
+  const fetch = async (url) => ({ ok: true, status: 200, url, headers: new Map([['content-type', 'text/html; charset=utf-8']]), text: async () => anubisPage, blob: async () => new Blob([anubisPage]) });
+  const exporter = new Exporter({ nlm, fetch, JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  const result = await exporter.run({ tree, plan, target: { mode: 'new', title: 'HCI' } });
+  assert.equal(result.errors.length, plan.counts.files);
+  assert.match(result.errors[0].error, /Bot-Schutz/);
+  assert.equal(nlm.calls.filter((c) => c[0] === 'upload').length, 0);
+});
+
+/** Drei einfache PDF-Jobs samt Abruf-Protokoll: welche Datei wann angefragt wurde und wie viele gleichzeitig liefen. */
+function aheadSetup({ failing = null, tweak = null } = {}) {
+  const node = (n) => ({ id: `n${n}`, kind: 'file', type: 'file', refId: String(9000 + n), title: `Folien_${n}.pdf`, filename: `Folien_${n}.pdf`, path: ['Kurs'], section: '', downloadUrl: `https://www.studon.fau.de/studon/goto.php?target=file_${9000 + n}_download`, sizeBytes: 1000 });
+  const tree = { id: 'root', kind: 'container', type: 'crs', refId: '1', title: 'Kurs', path: [], children: [node(1), node(2), node(3)], errors: [] };
+  if (tweak) tweak(tree);
+  const plan = planExport({ tree, settings: { overviewSource: false } });
+  const log = { requested: [], running: 0, maxRunning: 0 };
+  const fetch = async (url) => {
+    log.requested.push(url);
+    log.running += 1;
+    log.maxRunning = Math.max(log.maxRunning, log.running);
+    await new Promise((resolve) => setImmediate(resolve));
+    log.running -= 1;
+    if (failing && url.includes(failing)) return { ok: false, status: 404, url, headers: new Map(), text: async () => '', blob: async () => new Blob([]) };
+    return { ok: true, status: 200, url, headers: new Map([['content-type', 'application/pdf']]), text: async () => '', blob: async () => new Blob(['%PDF-1.4']) };
+  };
+  const state = { refId: '1', notebooks: [], primaryNotebookId: null, items: {} };
+  return { tree, plan, fetch, log, state };
+}
+
+test('Die nächste Datei wird schon geladen, während die aktuelle hochlädt – aber nie mehr als eine voraus', async () => {
+  const { tree, plan, fetch, log, state } = aheadSetup();
+  const nlm = fakeNlm();
+  const seenAtUpload = [];
+  const upload = nlm.uploadFile.bind(nlm);
+  nlm.uploadFile = async (...args) => {
+    // Dem Vorausladen Zeit geben, bevor der Upload „fertig“ ist.
+    await new Promise((resolve) => setImmediate(resolve));
+    seenAtUpload.push(log.requested.length);
+    return upload(...args);
+  };
+  const exporter = new Exporter({ nlm, fetch, JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  const result = await exporter.run({ tree, plan, target: { mode: 'new', title: 'Kurs' } });
+
+  assert.equal(result.errors.length, 0, JSON.stringify(result.errors));
+  assert.deepEqual(nlm.calls.filter((c) => c[0] === 'upload').map((c) => c[2]), ['Folien_1.pdf', 'Folien_2.pdf', 'Folien_3.pdf']);
+  assert.deepEqual(seenAtUpload, [2, 3, 3], 'beim Upload von Datei 1 ist Datei 2 schon angefragt, Datei 3 noch nicht');
+  assert.equal(log.requested.length, 3, 'keine Datei wird doppelt geladen');
+  assert.equal(log.maxRunning, 1, 'StudOn sieht nie zwei Downloads gleichzeitig');
+});
+
+test('Scheitert das Vorausladen, steht der Fehler bei genau dieser Datei und der Rest läuft weiter', async () => {
+  const { tree, plan, fetch, state } = aheadSetup({ failing: 'file_9002_' });
+  const nlm = fakeNlm();
+  const exporter = new Exporter({ nlm, fetch, JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  const result = await exporter.run({ tree, plan, target: { mode: 'new', title: 'Kurs' } });
+  assert.deepEqual(result.errors.map((e) => e.title), ['Folien_2.pdf']);
+  assert.match(result.errors[0].error, /HTTP 404/);
+  assert.deepEqual(nlm.calls.filter((c) => c[0] === 'upload').map((c) => c[2]), ['Folien_1.pdf', 'Folien_3.pdf']);
+});
+
+test('Große Dateien werden nicht vorausgeladen (sie lägen sonst doppelt im Speicher)', async () => {
+  const { tree, plan, fetch, log, state } = aheadSetup({ tweak: (t) => { t.children[1].sizeBytes = 150 * 1024 * 1024; } });
+  const nlm = fakeNlm();
+  const seenAtUpload = [];
+  const upload = nlm.uploadFile.bind(nlm);
+  nlm.uploadFile = async (...args) => {
+    await new Promise((resolve) => setImmediate(resolve));
+    seenAtUpload.push(log.requested.length);
+    return upload(...args);
+  };
+  const exporter = new Exporter({ nlm, fetch, JSZip, settings: { delayMs: 0, waitForProcessing: false }, state, sleep: async () => {} });
+  await exporter.run({ tree, plan, target: { mode: 'new', title: 'Kurs' } });
+  assert.equal(seenAtUpload[0], 1, 'die große Datei 2 wird erst geladen, wenn sie an der Reihe ist');
 });
