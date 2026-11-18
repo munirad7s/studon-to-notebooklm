@@ -235,6 +235,54 @@ test('Ein Abruffehler im Tab (z. B. Netz weg) kommt als Fehler an, nicht als Tab
   });
 });
 
+/** Ein Tab, den Chrome eingefroren hat: Nachrichten kommen an, aber niemand antwortet. */
+const frozen = () => new Promise(() => {});
+
+test('Friert der Tab mitten in einer Anfrage ein, wechselt die Brücke nach ausbleibenden Lebenszeichen den Tab', async () => {
+  const good = studon({ [COURSE]: { body: 'vom wachen Tab' } });
+  const tabs = fakeTabs([{ id: 1, fetch: studon({}) }, { id: 2, fetch: good }]);
+  const first = tabs.tabs.get(1);
+  const realSend = first.send;
+  let isFrozen = false;
+  first.send = (message) => {
+    if (message.type === 's2n-fetch') isFrozen = true;
+    return isFrozen ? frozen() : realSend(message);
+  };
+  const bridge = bridgeFor(tabs, { preferredTabId: 1, watchdogMs: 10, pingTimeoutMs: 10 });
+  const started = Date.now();
+  const res = await bridge.fetch(COURSE);
+  assert.equal(await res.text(), 'vom wachen Tab');
+  assert.ok(Date.now() - started < 2000, 'nicht erst nach der vollen Zeitgrenze');
+});
+
+test('Eine langsame Antwort eines wachen Tabs wird abgewartet und nicht doppelt geholt', async () => {
+  const site = studon({ [COURSE]: { body: 'langsam, aber da' } });
+  const tabs = fakeTabs([{ id: 1, fetch: site }]);
+  const tab = tabs.tabs.get(1);
+  const realSend = tab.send;
+  tab.send = async (message) => {
+    if (message.type === 's2n-fetch') await new Promise((resolve) => setTimeout(resolve, 90));
+    return realSend(message);
+  };
+  const res = await bridgeFor(tabs, { preferredTabId: 1, watchdogMs: 10, pingTimeoutMs: 10 }).fetch(COURSE);
+  assert.equal(await res.text(), 'langsam, aber da');
+  assert.deepEqual(site.calls, [COURSE]);
+});
+
+test('Antwortet StudOn selbst zu lange nicht, gibt es eine Zeitüberschreitung statt „kein Tab erreichbar“', async () => {
+  const tabs = fakeTabs([{ id: 1, fetch: studon({}) }]);
+  const tab = tabs.tabs.get(1);
+  const realSend = tab.send;
+  tab.send = (message) => (message.type === 's2n-fetch' ? frozen() : realSend(message));
+  const bridge = bridgeFor(tabs, { preferredTabId: 1, watchdogMs: 10, pingTimeoutMs: 10, requestTimeoutMs: 60 });
+  await assert.rejects(bridge.fetch(COURSE), (err) => {
+    assert.ok(!(err instanceof StudOnTabError));
+    assert.match(err.message, /Zeitüberschreitung/);
+    return true;
+  });
+  assert.equal(tabs.created.length, 0);
+});
+
 test('createStudOnFetch schickt nur StudOn-Adressen über die Brücke', async () => {
   const direct = [];
   const viaBridge = [];

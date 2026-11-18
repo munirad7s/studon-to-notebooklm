@@ -312,3 +312,11 @@ test('hasCourseContent: ein Kurs, in dem nur die Info-Seite gefunden wurde, gilt
   assert.deepEqual(empty.children.map((n) => n.kind), ['text']);
   assert.equal(hasCourseContent(empty), false);
 });
+
+test('Pausen zwischen Abrufen laufen über die übergebene sleep-Funktion (im Tab: Timer, die im Hintergrund nicht gebremst werden)', async () => {
+  const waits = [];
+  const c = new StudOnCrawler({ fetch: fx.fakeFetch(fx.routes()), DOMParser, sleep: async (ms) => { waits.push(ms); }, options: { delayMs: 50, forum: false } });
+  await c.scan({ refId: fx.COURSE_REF, type: 'crs', title: 'HCI' });
+  assert.ok(waits.length > 5, `erwartet eine Pause je Abruf, waren ${waits.length}`);
+  assert.ok(waits.every((ms) => ms > 0 && ms <= 50));
+});

@@ -1,5 +1,6 @@
 import { StudOnCrawler, SessionExpiredError, BotCheckError, flatten, hasCourseContent } from '../lib/crawler.js';
 import { StudOnBridge, StudOnTabError, createStudOnFetch } from '../lib/studon-bridge.js';
+import { createSteadyTimers } from '../lib/steady-timers.js';
 import { NotebookLMClient, NotLoggedInError } from '../lib/nlm-client.js';
 import { DriveClient, buildAuthUrl, parseTokenFromRedirect } from '../lib/drive-client.js';
 import { planExport, Exporter, itemKey, reconcileNotebook, deleteDuplicateSources, targetChain, isPresent } from '../lib/exporter.js';
@@ -77,7 +78,20 @@ function log(target, message, cls = '') {
   const lines = runLog[target === 'export-log' ? 'export' : 'scan'];
   lines.push(line.textContent);
   if (lines.length > RUN_LOG_LINES) lines.shift();
-  runLogTimer ||= setTimeout(persistRunLog, 1500);
+  runLogTimer ||= timers.setTimeout(persistRunLog, 1500);
+}
+
+/**
+ * Ein Export dauert Minuten, und der Nutzer wechselt dabei den Tab. Zwei Dinge halten ihn im
+ * Hintergrund am Laufen: Pausen über Worker-Timer (Chrome bremst die Timer versteckter Seiten
+ * auf einen pro Minute) und eine Web-Sperre während Scan und Export (Chrome friert Seiten ein,
+ * die fünf Minuten versteckt sind – außer sie halten eine Sperre).
+ */
+const timers = createSteadyTimers({ createWorker: () => new Worker(chrome.runtime.getURL('lib/timer-worker.js')) });
+
+function whileAwake(work) {
+  if (!navigator.locks) return work();
+  return navigator.locks.request('studon-to-notebooklm:run', { mode: 'shared' }, work);
 }
 
 /**
@@ -86,6 +100,7 @@ function log(target, message, cls = '') {
  */
 const bridge = new StudOnBridge({
   tabs: chrome.tabs,
+  timers,
   preferredTabId: launch.tabId,
   openUrl: isStudOnUrl(course.url) ? course.url : repoUrl(course.refId),
   log: (m) => log(ui.state === 'exporting' ? 'export-log' : 'scan-log', m),
@@ -201,7 +216,7 @@ async function applyLaunch(connected) {
 }
 
 async function connectNotebookLM() {
-  ui.nlm = new NotebookLMClient({ fetch: (u, i) => fetch(u, i), authuser: ui.settings.authuser, log: (m) => log('scan-log', m) });
+  ui.nlm = new NotebookLMClient({ fetch: (u, i) => fetch(u, i), authuser: ui.settings.authuser, log: (m) => log('scan-log', m), sleep: timers.sleep });
   try {
     const info = await ui.nlm.init();
     $('nlm-account').textContent = `NotebookLM: ${info.email || 'verbunden'}`;
@@ -265,6 +280,7 @@ async function runScan() {
 
   ui.crawler = new StudOnCrawler({
     fetch: studonFetch,
+    sleep: timers.sleep,
     DOMParser: window.DOMParser,
     options: scan,
     log: (m) => log('scan-log', m),
@@ -278,19 +294,19 @@ async function runScan() {
   try {
     ui.tree = standaloneFauTv
       ? { id: 'fautv-root', kind: 'container', type: 'fautv', refId: course.refId, title: course.title || 'FAU.tv-Import', url: course.url, path: [], children: [], errors: [] }
-      : await ui.crawler.scan({ refId: course.refId, type: course.type || null, title: course.title, url: course.url });
+      : await whileAwake(() => ui.crawler.scan({ refId: course.refId, type: course.type || null, title: course.title, url: course.url }));
     ui.scanController.signal.throwIfAborted();
     if (extraLinks.length) {
       const baseStats = { ...ui.crawler.stats };
       const combineStats = (stats) => Object.fromEntries(Object.keys(baseStats).map((key) => [key, baseStats[key] + (stats[key] || 0)]));
-      const added = await appendFauTvSources(ui.tree, extraLinks, {
+      const added = await whileAwake(() => appendFauTvSources(ui.tree, extraLinks, {
         fetch: (u, i) => fetch(u, i), signal: ui.scanController.signal,
         onProgress: ({ message, stats }) => {
           $('scan-status').textContent = message;
           log('scan-log', message);
           updateStats(combineStats(stats));
         },
-      });
+      }));
       ui.crawler.stats = combineStats(added);
     }
     ui.scanController.signal.throwIfAborted();
@@ -335,7 +351,7 @@ async function runScan() {
     $('btn-scan').disabled = false;
     $('btn-scan').textContent = 'Erneut scannen';
     $('btn-scan-abort').hidden = true;
-    bridge.close();
+    await bridge.close();
   }
 }
 
@@ -678,6 +694,7 @@ async function runExport() {
     fetch: studonFetch,
     JSZip: window.JSZip,
     extractAudio: extractAudioBlob,
+    sleep: timers.sleep,
     settings: { ...settings, delayMs: 350 },
     state: ui.courseState,
     persist: (s) => saveCourseState(s),
@@ -699,7 +716,7 @@ async function runExport() {
   });
 
   try {
-    ui.result = await ui.exporter.run({ tree: ui.tree, plan: ui.plan, target, courseUrl: course.url || gotoUrl(course.type || 'crs', course.refId) });
+    ui.result = await whileAwake(() => ui.exporter.run({ tree: ui.tree, plan: ui.plan, target, courseUrl: course.url || gotoUrl(course.type || 'crs', course.refId) }));
     setProgress('export-progress', 1);
     $('export-status').textContent = ui.result.aborted ? 'Export abgebrochen' : 'Export abgeschlossen';
     renderResult();
@@ -725,7 +742,7 @@ async function runExport() {
     $('btn-export').disabled = false;
     $('btn-export-abort').hidden = true;
     $('btn-scan').disabled = false;
-    bridge.close();
+    await bridge.close();
   }
 }
 

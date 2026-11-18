@@ -21,9 +21,32 @@
   const IDLE_MS = 120000;
   const MAX_OPEN = 6;
 
+  const AWAKE_MS = 60000;
+  const AWAKE_LOCK = 'studon-to-notebooklm:bridge';
+
   /** Offene Antworten, deren Inhalt der Export-Tab noch abholt: id → { res, reader, rest, used }. */
   const open = new Map();
   let seq = 0;
+  let awake = false;
+  let awakeUntil = 0;
+
+  /**
+   * Chrome friert Tabs ein, die fünf Minuten im Hintergrund liegen – mitten im Export bliebe die
+   * Antwort dann aus. Ein Tab, der eine Web-Sperre hält, wird nicht eingefroren. Die Sperre gilt
+   * nur, solange Abrufe laufen, und endet eine Minute nach dem letzten.
+   */
+  function keepAwake() {
+    awakeUntil = Date.now() + AWAKE_MS;
+    if (awake || !navigator.locks) return;
+    awake = true;
+    const untilIdle = () => new Promise((resolve) => {
+      const check = () => {
+        if (Date.now() >= awakeUntil) { awake = false; resolve(); } else setTimeout(check, 10000);
+      };
+      setTimeout(check, 10000);
+    });
+    navigator.locks.request(AWAKE_LOCK, { mode: 'shared' }, untilIdle).catch(() => { awake = false; });
+  }
 
   function drop(id) {
     const entry = open.get(id);
@@ -88,6 +111,7 @@
     if (message.type === 's2n-ping') {
       return { ok: true, protocol: PROTOCOL, botCheck: !!document.getElementById('anubis_challenge') };
     }
+    keepAwake();
     if (message.type === 's2n-fetch') {
       if (!isStudOn(message.url)) return { ok: false, error: 'Nur StudOn-Adressen werden abgerufen' };
       sweep();

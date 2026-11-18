@@ -99,3 +99,63 @@ test('Nachrichten anderer Art und anderer Erweiterungen bleiben unbeantwortet', 
   await assert.rejects(send({ type: 'list-notebooks' }), /Receiving end/);
   await assert.rejects(send({ type: 's2n-ping' }, { id: 'andere-erweiterung' }), /Receiving end/);
 });
+
+/** navigator.locks und Uhr zum Vorspulen: zeigt, wann der Tab die Sperre hält und wann er sie abgibt. */
+function awakeHarness() {
+  const clock = { now: 1_000_000 };
+  const timers = [];
+  const requests = [];
+  const globals = {
+    Date: { now: () => clock.now },
+    setTimeout: (fn, ms) => { timers.push({ fn, at: clock.now + ms }); },
+    navigator: { locks: { request(name, options, callback) {
+      const held = { name, options, released: false };
+      requests.push(held);
+      return callback().then(() => { held.released = true; });
+    } } },
+  };
+  const advance = async (ms) => {
+    clock.now += ms;
+    for (let round = 0; round < 50; round += 1) {
+      const due = timers.filter((t) => t.at <= clock.now);
+      if (!due.length) break;
+      for (const t of due) { timers.splice(timers.indexOf(t), 1); t.fn(); }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  return { globals, requests, advance };
+}
+
+test('Solange Abrufe laufen, hält der Tab eine Web-Sperre – sonst friert Chrome ihn nach 5 Minuten im Hintergrund ein', async () => {
+  const { globals, requests, advance } = awakeHarness();
+  const { send } = loadContentBridge({ fetch: async () => new Response('seite'), globals });
+
+  await send({ type: 's2n-ping' });
+  assert.equal(requests.length, 0, 'ein Ping allein hält den Tab nicht wach');
+
+  const head = await send({ type: 's2n-fetch', url: PAGE });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.mode, 'shared', 'mehrere StudOn-Tabs dürfen die Sperre gleichzeitig halten');
+  assert.equal(requests[0].released, false);
+
+  // Weitere Abrufe verlängern die Sperre, statt neue anzufordern.
+  await advance(30_000);
+  await send({ type: 's2n-text', id: head.id });
+  await advance(30_000);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].released, false, 'kurz nach dem letzten Abruf bleibt der Tab wach');
+
+  // Ist der Export vorbei, gibt der Tab die Sperre wieder ab.
+  await advance(120_000);
+  assert.equal(requests[0].released, true);
+
+  await send({ type: 's2n-fetch', url: PAGE });
+  assert.equal(requests.length, 2, 'ein neuer Lauf holt die Sperre wieder');
+});
+
+test('Ohne Web-Sperren im Browser arbeitet die Brücke trotzdem', async () => {
+  const { send } = loadContentBridge({ fetch: async () => new Response('seite'), globals: { navigator: {} } });
+  const head = await send({ type: 's2n-fetch', url: PAGE });
+  assert.equal((await send({ type: 's2n-text', id: head.id })).text, 'seite');
+});
