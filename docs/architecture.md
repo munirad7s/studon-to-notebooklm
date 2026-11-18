@@ -50,12 +50,22 @@ Ein Export dauert Minuten; der Nutzer wechselt dabei den Tab. Chrome behandelt v
 
 | Was Chrome tut | Folge ohne Gegenmittel | Gegenmittel |
 |---|---|---|
-| Seite nach 5 Minuten im Hintergrund einfrieren | StudOn-Tab beantwortet keine Abrufe mehr, Export-Tab bleibt stehen | Web-Sperre (`navigator.locks`, `shared`) – Seiten mit Sperre werden nicht eingefroren. StudOn-Tab: solange Abrufe laufen, bis eine Minute danach (`content/bridge.js`). Export-Tab: während Scan und Export (`whileAwake` in `export.js`). |
-| Timer versteckter Seiten bremsen (sofort 1/s, nach 5 Minuten 1/min) | jede Pause von 120–350 ms dauert bis zu einer Minute | `lib/steady-timers.js`: ein Worker zählt die Zeit (`lib/timer-worker.js`), die Seite bekommt nur die Nachricht. Fällt der Worker aus, laufen die Timer der Seite. |
+| Seite nach einigen Minuten im Hintergrund einfrieren | StudOn-Tab beantwortet keine Abrufe mehr, Export-Tab bleibt stehen | Web-Sperre (`navigator.locks`, `shared`) – Seiten mit Sperre werden nicht eingefroren. StudOn-Tab: solange Abrufe laufen, bis eine Minute danach (`content/bridge.js`). Export-Tab: während Scan und Export (`whileAwake` in `export.js`). |
+| Timer versteckter Seiten bremsen (sofort 1/s, nach ein bis zwei Minuten etwa 1/min) | jede Pause von 120–350 ms dauert bis zu einer Minute | `lib/steady-timers.js`: ein Worker zählt die Zeit (`lib/timer-worker.js`), die Seite bekommt nur die Nachricht. Fällt der Worker aus, laufen die Timer der Seite; der Scan meldet das im Protokoll. |
 | – | Tab trotzdem weg (geschlossen, abgestürzt, eingefroren) | `StudOnBridge.guarded`: bei langen Antworten alle 8 s ein Ping; nach zwei ausbleibenden gilt der Tab als verloren und der Abruf läuft über den nächsten. Ein wacher Tab mit langsamer Antwort wird abgewartet (Zeitgrenze 90 s je Abruf). |
 
-Gemessen am 18.11.2026 (Chrome 156): Export des vhb-Kurses ref 7193538, der StudOn-Tab antwortete genau fünf
-Minuten nach dem Wechsel in den Hintergrund nicht mehr; er war weder neu geladen noch verworfen.
+Gemessen am 18.11.2026 (Chrome 156):
+
+- Export des vhb-Kurses ref 7193538 (17 Videos, bis 588 MB): der StudOn-Tab antwortete fünf Minuten nach dem
+  Wechsel in den Hintergrund 90 Sekunden lang nicht. Er war weder neu geladen noch verworfen.
+- Versuch mit zwei versteckten StudOn-Tabs über sechs Minuten, je ein Seiten-Timer und ein Worker-Timer im
+  200-ms-Takt (Soll: 150 je 30 s):
+
+  | | ohne Sperre | mit Web-Sperre |
+  |---|---|---|
+  | `freeze`-Ereignis | nach 167 s im Hintergrund, 76 s lang | keines |
+  | Seiten-Timer je 30 s | 30 → 20 → 1 → 0 … | 30 → 20 → 4 → 0–1 … |
+  | Worker-Timer je 30 s | 150, während des Einfrierens 37 → 0 → 34 | durchgehend 150 |
 
 ## Datenfluss
 

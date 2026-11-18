@@ -85,7 +85,7 @@ function log(target, message, cls = '') {
  * Ein Export dauert Minuten, und der Nutzer wechselt dabei den Tab. Zwei Dinge halten ihn im
  * Hintergrund am Laufen: Pausen über Worker-Timer (Chrome bremst die Timer versteckter Seiten
  * auf einen pro Minute) und eine Web-Sperre während Scan und Export (Chrome friert Seiten ein,
- * die fünf Minuten versteckt sind – außer sie halten eine Sperre).
+ * die einige Minuten versteckt sind – außer sie halten eine Sperre).
  */
 const timers = createSteadyTimers({ createWorker: () => new Worker(chrome.runtime.getURL('lib/timer-worker.js')) });
 

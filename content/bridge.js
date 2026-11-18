@@ -31,8 +31,8 @@
   let awakeUntil = 0;
 
   /**
-   * Chrome friert Tabs ein, die fünf Minuten im Hintergrund liegen – mitten im Export bliebe die
-   * Antwort dann aus. Ein Tab, der eine Web-Sperre hält, wird nicht eingefroren. Die Sperre gilt
+   * Chrome friert Tabs ein, die einige Minuten im Hintergrund liegen (gemessen: drei bis fünf) –
+   * mitten im Export bliebe die Antwort dann aus. Ein Tab, der eine Web-Sperre hält, wird nicht eingefroren. Die Sperre gilt
    * nur, solange Abrufe laufen, und endet eine Minute nach dem letzten.
    */
   function keepAwake() {

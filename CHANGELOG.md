@@ -13,7 +13,7 @@
   startet nicht.
 - **Schneller.** Während eine Datei zu NotebookLM hochlädt, wird die nächste schon von StudOn geholt – weiterhin
   nur ein StudOn-Download zur selben Zeit.
-- **Läuft im Hintergrund durch.** Chrome friert Tabs ein, die fünf Minuten nicht zu sehen sind, und bremst ihre
+- **Läuft im Hintergrund durch.** Chrome friert Tabs ein, die einige Minuten nicht zu sehen sind, und bremst ihre
   Timer auf einen pro Minute – ein langer Export blieb stehen, sobald man den Tab wechselte. Export-Tab und
   StudOn-Tab halten jetzt für die Dauer des Laufs eine Web-Sperre (solche Tabs friert Chrome nicht ein), und die
   Pausen zwischen den Abrufen laufen über einen Worker. Antwortet der StudOn-Tab trotzdem nicht mehr, merkt die
